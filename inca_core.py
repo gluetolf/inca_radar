@@ -163,16 +163,24 @@ def parse_forecast_csv(csv_path, max_hours=24):
     return out
 
 
-_GX = _GY = None
+_GX = _GY = _GPTS = None
 
-def render_forecast(lons, lats, vals, out_png):
-    """Punktwerte auf das gemeinsame Raster interpolieren -> PNG. Rueckgabe max_mmh."""
-    global _GX, _GY
+def render_forecast(lons, lats, vals, out_png, max_dist_deg=0.07):
+    """Punktwerte auf das gemeinsame Raster interpolieren -> PNG.
+    Zellen, die weiter als max_dist_deg vom naechsten Datenpunkt entfernt sind,
+    werden ausgeblendet (schneidet die Flaeche auf die Schweiz zu)."""
+    global _GX, _GY, _GPTS
     if _GX is None:
         gx = DST_W + (np.arange(DW) + 0.5) * DST_RES
         gy = DST_N - (np.arange(DH) + 0.5) * DST_RES
         _GX, _GY = np.meshgrid(gx, gy)
+        _GPTS = np.column_stack([_GX.ravel(), _GY.ravel()])
     grid = griddata((lons, lats), vals, (_GX, _GY), method="linear")  # ausserhalb Huelle -> NaN
+    # Zuschnitt: Zellen ohne nahen Datenpunkt verwerfen
+    from scipy.spatial import cKDTree
+    tree = cKDTree(np.column_stack([lons, lats]))
+    dist, _ = tree.query(_GPTS, k=1)
+    grid.ravel()[dist > max_dist_deg] = np.nan
     Image.fromarray(colorize(grid), "RGBA").save(out_png)
     mx = float(np.nanmax(vals)) if len(vals) and np.isfinite(np.nanmax(vals)) else 0.0
     return round(mx, 1)
@@ -197,19 +205,33 @@ def download(href, dest, timeout=180):
     return dest
 
 
+def _rzc_time(fname):
+    """Zeitstempel aus RZC-Dateiname lesen: RZC<YY><DOY><HHMM>... -> datetime UTC."""
+    import re
+    m = re.search(r"RZC(\d{2})(\d{3})(\d{4})", os.path.basename(fname).upper())
+    if not m:
+        return None
+    yy, doy, hhmm = int(m.group(1)), int(m.group(2)), m.group(3)
+    base = dt.datetime(2000 + yy, 1, 1, int(hhmm[:2]), int(hhmm[2:]), tzinfo=dt.timezone.utc)
+    return base + dt.timedelta(days=doy - 1)
+
+
 def radar_latest_assets(limit=24):
-    """Liste (datetime, href) der letzten RZC-Radarbilder (neueste zuerst)."""
-    data = _get_json(f"{STAC}/collections/{RADAR_COLLECTION}/items?limit={limit*3}")
-    out = []
+    """Liste (datetime, href) der letzten RZC-Radarbilder (neueste zuerst).
+    Sammelt ALLE RZC-Assets ueber alle Items (egal ob viele Items oder ein Item
+    mit vielen Assets), sortiert nach Zeit und liefert die juengsten 5-Min-Bilder."""
+    data = _get_json(f"{STAC}/collections/{RADAR_COLLECTION}/items?limit=200")
+    found = {}   # datetime -> href (dedupe)
     for feat in data.get("features", []):
         for k, a in feat.get("assets", {}).items():
             href = a.get("href", "")
             base = os.path.basename(href).upper()
             if base.startswith("RZC") and href.lower().endswith(".h5"):
-                dtime = feat.get("properties", {}).get("datetime")
-                out.append((dtime, href))
-                break
-    return out[:limit]
+                when = _rzc_time(base)
+                if when is not None:
+                    found[when] = href
+    times = sorted(found, reverse=True)[:limit]
+    return [(t.isoformat(), found[t]) for t in times]
 
 
 def forecast_latest_precip_asset():
