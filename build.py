@@ -18,8 +18,7 @@ import inca_core as c
 OUT = os.environ.get("INCA_SITE", "site")
 RADAR_FRAMES = int(os.environ.get("RADAR_FRAMES", "24"))   # ~2 h bei 5-Min-Takt
 FC_HOURS = int(os.environ.get("FC_HOURS", "24"))           # Rueckfall-Vorhersagestunden
-NOWCAST_STEP_MIN = int(os.environ.get("NOWCAST_STEP_MIN", "5"))   # Nowcast-Schrittweite
-NOWCAST_MAX_MIN = int(os.environ.get("NOWCAST_MAX_MIN", "360"))   # Nowcast bis +6 h
+ICON_HOURS = int(os.environ.get("ICON_HOURS", "24"))       # ICON-CH1 bis +X h (max 33)
 
 
 def _clean():
@@ -28,7 +27,7 @@ def _clean():
         os.remove(f)
 
 
-def build(local_radar=None, local_fc=None, local_nowcast=None):
+def build(local_radar=None, local_fc=None, local_icon_dir=None):
     _clean()
     frames, now = [], None
     tmp = tempfile.mkdtemp(prefix="inca-")
@@ -61,16 +60,12 @@ def build(local_radar=None, local_fc=None, local_nowcast=None):
     except Exception as e:
         print("Radar-Teil fehlgeschlagen:", e)
 
-    # ---- Zukunft: primaer Nowcast (gerastert, 5-Min), sonst Lokalprognose ----
+    # ---- Zukunft: primaer ICON-CH1 (gerastert), sonst Lokalprognose ----
     future_done = False
     try:
-        if local_nowcast:
-            ncf = local_nowcast
-        else:
-            href = c.nowcast_latest_asset()
-            ncf = c.download(href, os.path.join(tmp, "nowcast.nc"))
-        series = c.render_nowcast(ncf, OUT, prefix="f",
-                                  step_min=NOWCAST_STEP_MIN, max_min=NOWCAST_MAX_MIN)
+        if local_icon_dir:
+            raise RuntimeError("lokaler ICON-Test nicht implementiert")
+        series = c.icon_forecast_frames(OUT, tmp, prefix="f", max_hours=ICON_HOURS, now=now)
         wet = 0; detail = []
         for when, fn, mx in series:
             if now is not None and when <= now:
@@ -78,18 +73,19 @@ def build(local_radar=None, local_fc=None, local_nowcast=None):
                 except OSError: pass
                 continue
             if mx > 0: wet += 1
-            lead = round((when - now).total_seconds() / 60) if now else 0
-            detail.append(f"+{lead}m:{mx}")
+            lead = round((when - now).total_seconds() / 3600) if now else 0
+            detail.append(f"+{lead}h:{mx}")
             frames.append({"file": fn, "time": when.isoformat(), "kind": "forecast", "max_mmh": mx})
         nfc = sum(1 for f in frames if f["kind"] == "forecast")
         allmax = max((m for *_, m in series), default=0)
-        print(f"Nowcast: {nfc} Bilder (5-Min), davon {wet} mit Niederschlag, max {allmax} mm/h")
-        print("Nowcast je Vorlaufzeit (Min:max mm/h):  " + "  ".join(detail))
+        print(f"ICON-CH1: {nfc} Bilder (stuendlich), davon {wet} mit Niederschlag, max {allmax} mm/h")
+        print("ICON je Vorlaufzeit (h:max mm/h):  " + "  ".join(detail))
         future_done = nfc > 0
     except Exception as e:
-        print("Nowcast nicht verfuegbar, Rueckfall auf Lokalprognose:", e)
+        import traceback; traceback.print_exc()
+        print("ICON nicht verfuegbar, Rueckfall auf Lokalprognose:", e)
 
-    # ---- Rueckfall: Lokalprognose (data4web), nur wenn kein Nowcast ----
+    # ---- Rueckfall: Lokalprognose (data4web), nur wenn keine ICON-Daten ----
     if not future_done:
         try:
             if local_fc:
@@ -123,7 +119,7 @@ def build(local_radar=None, local_fc=None, local_nowcast=None):
 
     frames.sort(key=lambda fr: fr["time"])
     manifest = {
-        "source": "MeteoSchweiz: Radar (Vergangenheit) + Nowcast/Prognose (Zukunft)",
+        "source": "MeteoSchweiz: Radar (Vergangenheit) + ICON-CH1/Prognose (Zukunft)",
         "bounds": c.BOUNDS,
         "now": now.isoformat() if now else None,
         "frames": frames,
@@ -138,5 +134,4 @@ if __name__ == "__main__":
     a = sys.argv[1:]
     lr = a[a.index("--radar") + 1] if "--radar" in a else None
     lf = a[a.index("--fc") + 1] if "--fc" in a else None
-    ln = a[a.index("--nowcast") + 1] if "--nowcast" in a else None
-    build(local_radar=lr, local_fc=lf, local_nowcast=ln)
+    build(local_radar=lr, local_fc=lf)

@@ -186,6 +186,142 @@ def render_forecast(lons, lats, vals, out_png, max_dist_deg=0.07):
     return round(mx, 1)
 
 
+# ===================== ICON-CH1 (GRIB2, Modellvorhersage) ============
+ICON_COLLECTION = os.environ.get("ICON_COLLECTION", "ch.meteoschweiz.ogd-forecasting-icon-ch1")
+
+
+def _post_json(url, body, timeout=120):
+    import urllib.request, json as _json
+    req = urllib.request.Request(url, data=_json.dumps(body).encode(),
+                                 headers={"Content-Type": "application/json", "Accept": "application/json"})
+    with urllib.request.urlopen(req, timeout=timeout) as r:
+        return _json.load(r)
+
+
+def _iso_dur_hours(s):
+    """ISO-8601-Dauer (z. B. P0DT3H0M0S) -> Stunden (float)."""
+    import re
+    m = re.match(r"P(?:(\d+)D)?T?(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?", s or "")
+    if not m:
+        return None
+    d, h, mi, se = (int(x) if x else 0 for x in m.groups())
+    return d * 24 + h + mi / 60.0 + se / 3600.0
+
+
+def _icon_lonlat(constants_path):
+    """CLON/CLAT (Zellmittelpunkte) aus der ICON-Konstantendatei lesen (Grad)."""
+    import eccodes as ec
+    lon = lat = None
+    f = open(constants_path, "rb")
+    while True:
+        gid = ec.codes_grib_new_from_file(f)
+        if gid is None:
+            break
+        try:
+            sn = ec.codes_get(gid, "shortName").lower()
+        except Exception:
+            sn = ""
+        vals = ec.codes_get_values(gid)
+        if "lon" in sn or "clon" in sn:
+            lon = np.array(vals)
+        elif "lat" in sn or "clat" in sn:
+            lat = np.array(vals)
+        ec.codes_release(gid)
+    f.close()
+    if lon is None or lat is None:
+        raise RuntimeError("CLON/CLAT in der Konstantendatei nicht gefunden")
+    if np.nanmax(np.abs(lon)) < 6.3 and np.nanmax(np.abs(lat)) < 1.6:  # Radiant -> Grad
+        lon = np.degrees(lon); lat = np.degrees(lat)
+    return lon, lat
+
+
+def _icon_values(grib_path):
+    """Werte der ersten GRIB-Nachricht (TOT_PREC, kumuliert in mm)."""
+    import eccodes as ec
+    f = open(grib_path, "rb")
+    gid = ec.codes_grib_new_from_file(f)
+    vals = np.array(ec.codes_get_values(gid))
+    ec.codes_release(gid); f.close()
+    return vals
+
+
+def _icon_constants_href():
+    data = _get_json(f"{STAC}/collections/{ICON_COLLECTION}/assets")
+    assets = data.get("assets", data)
+    items = assets.items() if isinstance(assets, dict) else [(a.get("id", ""), a) for a in assets]
+    for k, a in items:
+        href = a.get("href", "") if isinstance(a, dict) else ""
+        if "horizontal" in (k + href).lower() and href.endswith(".grib2"):
+            return href
+    raise RuntimeError("Horizontale Konstantendatei (lon/lat) nicht gefunden")
+
+
+_ICON_IDX = _ICON_MASK = None
+
+def icon_forecast_frames(out_dir, tmp, prefix="f", max_hours=24, now=None):
+    """Neueste ICON-CH1-TOT_PREC-Vorhersage (deterministisch) -> PNG-Reihe.
+    Rueckgabe: Liste (datetime_utc, dateiname, max_mmh). Stuendlich, entkumuliert."""
+    global _ICON_IDX, _ICON_MASK
+    from scipy.spatial import cKDTree
+    # 1) Gitter-Koordinaten (Konstanten)
+    chref = _icon_constants_href()
+    cfile = download(chref, os.path.join(tmp, "icon_const.grib2"))
+    lon, lat = _icon_lonlat(cfile)
+    print(f"ICON-Gitter: {len(lon)} Zellen, lon {lon.min():.2f}..{lon.max():.2f}, lat {lat.min():.2f}..{lat.max():.2f}")
+
+    # 2) TOT_PREC-Assets (deterministisch) der neuesten Referenz suchen
+    body = {"collections": [ICON_COLLECTION], "forecast:variable": "TOT_PREC",
+            "forecast:perturbed": False, "limit": 100}
+    feats = _post_json(f"{STAC}/search", body).get("features", [])
+    recs = []
+    for ft in feats:
+        p = ft.get("properties", {})
+        ref = p.get("forecast:reference_datetime") or p.get("datetime")
+        hz = _iso_dur_hours(p.get("forecast:horizon", ""))
+        href = next((a.get("href") for a in ft.get("assets", {}).values()
+                     if str(a.get("href", "")).endswith(".grib2")), None)
+        if ref and hz is not None and href:
+            recs.append((ref, hz, href))
+    if not recs:
+        raise RuntimeError(f"Keine ICON-TOT_PREC-Assets gefunden (Features: {len(feats)})")
+    latest = max(r[0] for r in recs)
+    series = sorted((hz, href) for ref, hz, href in recs if ref == latest)
+    ref_dt = dt.datetime.fromisoformat(latest.replace("Z", "+00:00"))
+    print(f"ICON-Referenz: {latest}  Vorlaufzeiten: {len(series)} (bis +{int(series[-1][0])}h)")
+
+    # 3) Zuordnung Gitterzelle -> Zielpixel (einmalig)
+    if _ICON_IDX is None:
+        gx = DST_W + (np.arange(DW) + 0.5) * DST_RES
+        gy = DST_N - (np.arange(DH) + 0.5) * DST_RES
+        GX, GY = np.meshgrid(gx, gy)
+        tree = cKDTree(np.column_stack([lon, lat]))
+        dist, idx = tree.query(np.column_stack([GX.ravel(), GY.ravel()]), k=1)
+        _ICON_IDX = idx
+        _ICON_MASK = dist > 0.02   # ausserhalb der ICON-Domaene -> transparent
+
+    # 4) Entkumulieren + rendern
+    out = []; prev = None; n = 0
+    for hz, href in series:
+        if hz > max_hours:
+            break
+        cur = _icon_values(download(href, os.path.join(tmp, f"icon_{int(hz):03d}.grib2")))
+        precip = cur - prev if prev is not None else cur.copy()
+        prev = cur
+        if hz <= 0:
+            continue
+        precip = np.clip(precip, 0, None)
+        field = precip[_ICON_IDX].astype("float32")
+        field[_ICON_MASK] = np.nan
+        grid = field.reshape(DH, DW)
+        fn = f"{prefix}{n:02d}.png"
+        Image.fromarray(colorize(grid), "RGBA").save(os.path.join(out_dir, fn))
+        when = ref_dt + dt.timedelta(hours=hz)
+        mx = float(np.nanmax(precip)) if precip.size else 0.0
+        out.append((when, fn, round(mx, 1)))
+        n += 1
+    return out
+
+
 # ===================== NOWCAST (INCA, gerastert, NetCDF) =============
 def _nowcast_src(ds):
     """src_crs und src_transform aus chx/chy + grid_mapping der NetCDF lesen."""

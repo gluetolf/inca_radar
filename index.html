@@ -118,7 +118,7 @@
   ].forEach(function(c){L.marker([c[1],c[2]],{interactive:false,keyboard:false,icon:L.divIcon({
      className:'city-label'+(c[3]?' city-home':''),html:'<div class="city-dot"></div>'+c[0],iconSize:[0,0],iconAnchor:[0,0]})}).addTo(map);});
 
-  var frames=[],bounds=null,overlays=[],idx=0,playing=false,timer=null,speed=350,refId=null,nowIdx=0,nowMs=0;
+  var frames=[],bounds=null,overlays=[],idx=0,playing=false,timer=null,speed=350,refId=null,nowIdx=0,nowMs=0,loopStart=0;
   function pad(n){return ('0'+n).slice(-2)}
   function hm(d){return pad(d.getHours())+':'+pad(d.getMinutes())}
   function label(fr){
@@ -144,7 +144,7 @@
     tag.textContent=L1.txt;tag.className='tag '+L1.cls;
     document.querySelectorAll('.tick').forEach(function(t,j){t.classList.toggle('active',j===i)});
   }
-  function step(){show(idx+1>=frames.length?0:idx+1)}
+  function step(){show(idx+1>=frames.length?loopStart:idx+1)}
   function play(){playing=true;document.getElementById('play').textContent='❚❚';clearInterval(timer);timer=setInterval(step,speed)}
   function pause(){playing=false;document.getElementById('play').textContent='▶';clearInterval(timer)}
   document.getElementById('play').onclick=function(){playing?pause():play()};
@@ -168,10 +168,13 @@
     frames=data.frames.map(function(f){var o=Object.assign({},f);o._url=(data.tile_base||'')+f.file;return o;});
     nowMs = data.now? new Date(data.now).getTime() : new Date(frames[frames.length-1].time).getTime();
     nowIdx=0;for(var i=0;i<frames.length;i++){if(frames[i].kind==='radar')nowIdx=i;}
+    // Start 30 Minuten vor "jetzt": Frame mit der geringsten Zeitdifferenz zu now-30min
+    var startMs=nowMs-30*60*1000,best=1e15;loopStart=0;
+    frames.forEach(function(f,i){var d=Math.abs(new Date(f.time).getTime()-startMs);if(d<best){best=d;loopStart=i;}});
     buildTimeline();
     document.getElementById('updated').textContent="Stand "+hm(new Date(nowMs))+" · "+frames.length+" Bilder";
     document.getElementById('loading').style.display='none';
-    show(nowIdx); if(!playing) play();
+    show(loopStart); if(!playing) play();
   }
   function fail(msg){if(frames.length)return;document.getElementById('loadtext').innerHTML="⚠️ "+msg;}
   function load(){
