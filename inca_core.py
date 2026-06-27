@@ -235,19 +235,22 @@ def radar_latest_assets(limit=24):
 
 
 def forecast_latest_precip_asset():
-    """(reference_datetime, href) der neuesten Niederschlags-CSV der Lokalprognose."""
-    data = _get_json(f"{STAC}/collections/{FC_COLLECTION}/items?limit=1")
-    feats = data.get("features", [])
-    if not feats:
-        raise RuntimeError(f"Keine Items in {FC_COLLECTION}.")
-    assets = feats[0].get("assets", {})
-    cand = [(k, a) for k, a in assets.items()
-            if "rre150" in k.lower() and a.get("href", "").lower().endswith(".csv")]
-    if not cand:
-        cand = [(k, a) for k, a in assets.items()
-                if "rre150" in a.get("href", "").lower()]
-    if not cand:
-        raise RuntimeError(f"Keine Niederschlags-CSV (rre150) in {FC_COLLECTION}. "
-                           f"Assets-Beispiel: {list(assets)[:5]}")
-    cand.sort(key=lambda kv: kv[0])   # nach Name -> juengster Zeitstempel zuletzt
-    return cand[-1][1]["href"]
+    """(href) der Niederschlags-CSV des NEUESTEN Vorhersagelaufs.
+    Sammelt rre150-Assets ueber mehrere Items und waehlt den hoechsten
+    Referenz-Zeitstempel aus dem Dateinamen (vnut12.lssw.<YYYYMMDDHHMM>.rre150...)."""
+    import re
+    data = _get_json(f"{STAC}/collections/{FC_COLLECTION}/items?limit=50&sortby=-datetime")
+    best = None  # (ref_timestamp, href)
+    for feat in data.get("features", []):
+        for k, a in feat.get("assets", {}).items():
+            href = a.get("href", "")
+            low = href.lower()
+            if "rre150" in low and low.endswith(".csv"):
+                m = re.search(r"\.(\d{12})\.rre150", os.path.basename(low))
+                ts = m.group(1) if m else os.path.basename(low)
+                if best is None or ts > best[0]:
+                    best = (ts, href)
+    if best is None:
+        raise RuntimeError(f"Keine Niederschlags-CSV (rre150) in {FC_COLLECTION}.")
+    print("Prognose-Lauf (Referenz):", best[0])
+    return best[1]
