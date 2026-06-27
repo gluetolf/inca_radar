@@ -81,15 +81,20 @@ def build(local_radar=None, local_fc=None):
         else:
             times = times[:FC_HOURS]
         wet = 0
+        detail = []
         for i, t in enumerate(times):
             lons, lats, vals = fc[t]
             fn = f"f{i:02d}.png"
             mx = c.render_forecast(lons, lats, vals, os.path.join(OUT, fn))
             if mx > 0:
                 wet += 1
+            lead = round((t - now).total_seconds() / 3600) if now else (i + 1)
+            detail.append(f"+{lead}:{len(vals)}:{mx}")
             frames.append({"file": fn, "time": t.isoformat(), "kind": "forecast", "max_mmh": mx})
         allmax = max((fr["max_mmh"] for fr in frames if fr["kind"] == "forecast"), default=0)
         print(f"Prognose: {len(times)} Bilder, davon {wet} mit Niederschlag, max {allmax} mm/h")
+        print("Prognose je Vorlaufzeit (Stunde:Punkte:max mm/h):")
+        print("  " + "  ".join(detail))
     except Exception as e:
         print("Prognose-Teil fehlgeschlagen:", e)
 
