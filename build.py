@@ -18,7 +18,7 @@ import inca_core as c
 OUT = os.environ.get("INCA_SITE", "site")
 RADAR_FRAMES = int(os.environ.get("RADAR_FRAMES", "24"))   # ~2 h bei 5-Min-Takt
 FC_HOURS = int(os.environ.get("FC_HOURS", "24"))           # Rueckfall-Vorhersagestunden
-ICON_HOURS = int(os.environ.get("ICON_HOURS", "24"))       # ICON-CH1 bis +X h (max 33)
+ICON_HOURS = int(os.environ.get("ICON_HOURS", "30"))       # ICON-CH1 bis +X h (max 33)
 
 
 def _clean():

@@ -279,20 +279,22 @@ def icon_forecast_frames(out_dir, tmp, prefix="f", max_hours=24, now=None):
         body.update(extra)
         return _post_json(f"{STAC}/search", body).get("features", [])
 
-    feats = []
-    try:
-        feats = _search({"forecast:reference_datetime": "latest"})
-        if feats:
-            print("ICON: reference_datetime=latest unterstuetzt")
-    except Exception as e:
-        print("ICON: 'latest' nicht unterstuetzt:", e)
-    if not feats:
+    feats, chosen = [], None
+    base = (now or dt.datetime.now(dt.timezone.utc)).replace(minute=0, second=0, microsecond=0)
+    base = base - dt.timedelta(hours=base.hour % 3)        # auf 3-Stunden-Raster
+    for k in range(0, 13):                                  # bis ~36 h zurueck
+        ref = base - dt.timedelta(hours=3 * k)
+        refiso = ref.strftime("%Y-%m-%dT%H:%M:%SZ")
         try:
-            feats = _search({"sortby": [{"field": "forecast:reference_datetime", "direction": "desc"}]})
-        except Exception as e:
-            print("ICON: sortby nicht unterstuetzt:", e)
-            feats = _search({})
-    print(f"ICON-Suche: {len(feats)} Features")
+            fs = _search({"forecast:reference_datetime": refiso})
+        except Exception:
+            fs = []
+        if fs:
+            feats, chosen = fs, refiso
+            break
+    if not feats:
+        feats = _search({})                                # Notnagel
+    print(f"ICON-Suche: {len(feats)} Features, gewaehlte Referenz {chosen}")
     if feats:
         print("  Properties-Schluessel:", list(feats[0].get("properties", {}).keys())[:10])
     recs = []
