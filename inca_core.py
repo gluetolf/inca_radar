@@ -249,11 +249,14 @@ def _icon_constants_href():
     data = _get_json(f"{STAC}/collections/{ICON_COLLECTION}/assets")
     assets = data.get("assets", data)
     items = assets.items() if isinstance(assets, dict) else [(a.get("id", ""), a) for a in assets]
+    keys = []
     for k, a in items:
         href = a.get("href", "") if isinstance(a, dict) else ""
-        if "horizontal" in (k + href).lower() and href.endswith(".grib2"):
+        keys.append(k)
+        blob = (str(k) + " " + str(href)).lower()
+        if "horizontal" in blob and ".grib2" in blob:
             return href
-    raise RuntimeError("Horizontale Konstantendatei (lon/lat) nicht gefunden")
+    raise RuntimeError("Horizontale Konstantendatei nicht gefunden. Asset-IDs: %s" % keys[:25])
 
 
 _ICON_IDX = _ICON_MASK = None
@@ -273,17 +276,23 @@ def icon_forecast_frames(out_dir, tmp, prefix="f", max_hours=24, now=None):
     body = {"collections": [ICON_COLLECTION], "forecast:variable": "TOT_PREC",
             "forecast:perturbed": False, "limit": 100}
     feats = _post_json(f"{STAC}/search", body).get("features", [])
+    print(f"ICON-Suche: {len(feats)} Features")
+    if feats:
+        print("  Properties-Schluessel:", list(feats[0].get("properties", {}).keys())[:10])
     recs = []
     for ft in feats:
         p = ft.get("properties", {})
         ref = p.get("forecast:reference_datetime") or p.get("datetime")
         hz = _iso_dur_hours(p.get("forecast:horizon", ""))
         href = next((a.get("href") for a in ft.get("assets", {}).values()
-                     if str(a.get("href", "")).endswith(".grib2")), None)
+                     if ".grib2" in str(a.get("href", "")).lower()), None)
         if ref and hz is not None and href:
             recs.append((ref, hz, href))
     if not recs:
-        raise RuntimeError(f"Keine ICON-TOT_PREC-Assets gefunden (Features: {len(feats)})")
+        sample = feats[0] if feats else {}
+        raise RuntimeError(f"Keine ICON-TOT_PREC-Assets gefunden (Features: {len(feats)}; "
+                           f"Properties: {list(sample.get('properties', {}).keys())[:10]}; "
+                           f"Assets: {list(sample.get('assets', {}).keys())[:5]})")
     latest = max(r[0] for r in recs)
     series = sorted((hz, href) for ref, hz, href in recs if ref == latest)
     ref_dt = dt.datetime.fromisoformat(latest.replace("Z", "+00:00"))
