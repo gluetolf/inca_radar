@@ -33,15 +33,15 @@ BOUNDS = [[DST_S, DST_W], [DST_N, DST_E]]
 
 # ---- Radar-Farbskala mm/h -> RGBA (blau leicht ... rot/magenta Gewitter) ----
 SCALE = [
-    (0.1,  (160, 210, 255, 130)),
-    (0.5,  (90,  160, 245, 160)),
-    (1.0,  (45,  110, 225, 180)),
-    (2.0,  (40,  180, 170, 195)),
-    (5.0,  (95,  200,  80, 205)),
-    (10.0, (230, 215,  70, 215)),
-    (20.0, (240, 150,  55, 225)),
-    (50.0, (225,  55,  50, 235)),
-    (1e9,  (170,  25, 110, 245)),
+    (0.05, (165, 215, 255, 150)),
+    (0.3,  (110, 175, 248, 170)),
+    (1.0,  (45,  110, 225, 188)),
+    (2.0,  (40,  180, 170, 200)),
+    (5.0,  (95,  200,  80, 210)),
+    (10.0, (230, 215,  70, 220)),
+    (20.0, (240, 150,  55, 228)),
+    (50.0, (225,  55,  50, 238)),
+    (1e9,  (170,  25, 110, 246)),
 ]
 
 
@@ -337,7 +337,10 @@ def icon_forecast_frames(out_dir, tmp, prefix="f", max_hours=24, now=None):
         if hz <= 0:
             continue
         precip = np.clip(precip, 0, None)
-        field = precip[_ICON_IDX].astype("float32")
+        field = precip[_ICON_IDX].astype("float32").reshape(DH, DW)
+        from scipy.ndimage import gaussian_filter
+        field = gaussian_filter(field, sigma=1.1)          # weiche Verlaeufe (App-Look)
+        field = field.reshape(-1)
         field[_ICON_MASK] = np.nan
         grid = field.reshape(DH, DW)
         fn = f"{prefix}{n:02d}.png"

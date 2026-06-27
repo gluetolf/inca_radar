@@ -108,7 +108,7 @@
   <div class="scalewrap">
     <div class="scalehead"><span>Niederschlagsintensität</span><span>mm/h</span></div>
     <div class="scalebar"></div>
-    <div class="scalelabels"><span>0.1</span><span>1</span><span>5</span><span>20</span><span>50+</span></div>
+    <div class="scalelabels"><span>0.05</span><span>1</span><span>5</span><span>20</span><span>50+</span></div>
   </div>
 </div></div>
 <div class="loading" id="loading"><div class="errbox" id="loadtext"><div class="spinner"></div>Daten werden geladen…</div></div>
@@ -209,10 +209,10 @@
     else if(e.code==='ArrowRight'){pause();show(idx+1);}
     else if(e.code==='ArrowLeft'){pause();show(idx-1);}});
   // ---- Niederschlag am angetippten Punkt (aus der Pixelfarbe der jeweiligen Karte) ----
-  var SCALE_JS=[[0.1,[160,210,255]],[0.5,[90,160,245]],[1,[45,110,225]],[2,[40,180,170]],
+  var SCALE_JS=[[0.05,[165,215,255]],[0.3,[110,175,248]],[1,[45,110,225]],[2,[40,180,170]],
     [5,[95,200,80]],[10,[230,215,70]],[20,[240,150,55]],[50,[225,55,50]],[1e9,[170,25,110]]];
   function rangeText(k){var lo=k===0?0:SCALE_JS[k-1][0],hi=SCALE_JS[k][0];
-    if(k===0)return '< 0,1 mm/h';if(hi>=1e9)return '> '+lo+' mm/h';
+    if(k===0)return '< '+(''+SCALE_JS[0][0]).replace('.',',')+' mm/h';if(hi>=1e9)return '> '+lo+' mm/h';
     return (''+lo).replace('.',',')+'–'+(''+hi).replace('.',',')+' mm/h';}
   var _cv=document.createElement('canvas'),_ctx=_cv.getContext('2d',{willReadFrequently:true}),_imgs={};
   function imgFor(url){if(_imgs[url])return _imgs[url];var im=new Image();im.onload=function(){updateReadout();};im.src=url;_imgs[url]=im;return im;}
