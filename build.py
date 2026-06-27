@@ -23,6 +23,7 @@ RADAR_FRAMES = int(os.environ.get("RADAR_FRAMES", "24"))   # ~2 h bei 5-Min-Takt
 FC_HOURS = int(os.environ.get("FC_HOURS", "24"))           # Rueckfall-Vorhersagestunden
 ICON_HOURS = int(os.environ.get("ICON_HOURS", "30"))       # ICON-CH1 bis +X h (max 33)
 ICOND2_HOURS = int(os.environ.get("ICOND2_HOURS", "12"))   # ICON-D2 (15-Min) bis +X h
+BLEND_MIN = float(os.environ.get("BLEND_MIN", "60"))       # Radar-Verankerung der Vorhersage (Min)
 
 
 def _clean():
@@ -34,6 +35,7 @@ def _clean():
 def build(local_radar=None, local_fc=None, local_icon_dir=None):
     _clean()
     frames, now = [], None
+    last_radar = None
     tmp = tempfile.mkdtemp(prefix="inca-")
 
     # ---- Radar: Vergangenheit -> jetzt ----
@@ -43,20 +45,25 @@ def build(local_radar=None, local_fc=None, local_icon_dir=None):
         else:
             assets = c.radar_latest_assets(RADAR_FRAMES)
             print(f"Radar-Assets gefunden: {len(assets)}")
-        rendered = []
+        rendered = []; radar_src = {}
         for i, (dtime, href) in enumerate(assets):
             try:
                 src = href if os.path.exists(str(href)) else c.download(href, os.path.join(tmp, f"r{i}.h5"))
                 fn = f"r{i:02d}.png"
                 when, mx = c.render_radar(src, os.path.join(OUT, fn))
-                rendered.append((when, fn, mx))
+                rendered.append((when, fn, mx)); radar_src[when] = src
             except Exception as e:
                 print("  Radarbild uebersprungen:", e)
         rendered.sort(key=lambda x: x[0])
         for when, fn, mx in rendered:
             frames.append({"file": fn, "time": when.isoformat(), "kind": "radar", "max_mmh": mx})
+        last_radar = None
         if rendered:
             now = rendered[-1][0]
+            try:
+                _, last_radar = c.radar_grid(radar_src[now])     # rohes Feld fuer den Uebergang
+            except Exception as e:
+                print("  letztes Radarfeld nicht verfuegbar:", e)
             span = f"{rendered[0][0].strftime('%H:%M')}–{rendered[-1][0].strftime('%H:%M')} UTC"
             print(f"Radar: {len(rendered)} Bilder ({span})")
         else:
@@ -81,34 +88,57 @@ def build(local_radar=None, local_fc=None, local_icon_dir=None):
         except Exception as e:
             import traceback; traceback.print_exc(); print("ICON-D2 fehlgeschlagen:", e)
 
+        # ICON-CH1 zeitlich auf die D2-Schritte interpolieren -> gleichmaessige Vorhersage
+        import bisect
+        ch1_t = sorted(ch1)
+        def ch1_at(t):
+            if t in ch1:
+                return ch1[t]
+            if not ch1_t or t < ch1_t[0] or t > ch1_t[-1]:
+                return None
+            i = bisect.bisect_left(ch1_t, t)
+            t0, t1 = ch1_t[i - 1], ch1_t[i]
+            f = (t - t0).total_seconds() / (t1 - t0).total_seconds()
+            return (1 - f) * ch1[t0] + f * ch1[t1]
+
         times = sorted(set(ch1) | set(d2))
         if now is not None:
             cutoff = now + dt.timedelta(hours=ICON_HOURS)
             times = [t for t in times if now < t <= cutoff]
-        wet = n = both = 0; detail = []
+        wet = n = both = anchored = 0; detail = []
         for t in times:
-            parts = [a for a in (ch1.get(t), d2.get(t)) if a is not None]
+            a = ch1_at(t); b = d2.get(t)
+            parts = [x for x in (a, b) if x is not None]
             if not parts:
                 continue
+            interp = "i" if (a is not None and t not in ch1) else ""
             if len(parts) > 1:                                  # beide -> Mittelwert je Pixel
                 both += 1
                 with np.errstate(all="ignore"):
                     field = np.nanmean(np.stack(parts), axis=0)
             else:                                               # nur eines -> Fallback
                 field = parts[0]
+            # Uebergang: in den ersten BLEND_MIN Minuten ans Radar anlehnen (weiche Naht)
+            if last_radar is not None and now is not None:
+                lead_min = (t - now).total_seconds() / 60.0
+                if 0 < lead_min < BLEND_MIN:
+                    w = 1.0 - lead_min / BLEND_MIN              # 1 -> 0 ueber die erste Stunde
+                    overlap = np.isfinite(last_radar) & np.isfinite(field)
+                    field = np.where(overlap, w * last_radar + (1 - w) * field, field)
+                    anchored += 1
             fn = f"f{n:02d}.png"
             Image.fromarray(c.colorize(field), "RGBA").save(os.path.join(OUT, fn))
             mxv = np.nanmax(field)
             mx = round(float(mxv), 1) if np.isfinite(mxv) else 0.0
             if mx > 0:
                 wet += 1
-            tag = "CH1+D2" if (t in ch1 and t in d2) else ("CH1" if t in ch1 else "D2")
+            tag = ("CH1" + interp + "+D2") if (a is not None and b is not None) else (("CH1" + interp) if a is not None else "D2")
             lead = round((t - now).total_seconds() / 3600, 2) if now else 0
             detail.append(f"+{lead}h[{tag}]:{mx}")
             frames.append({"file": fn, "time": t.isoformat(), "kind": "forecast", "max_mmh": mx})
             n += 1
-        print(f"Vorhersage: {n} Bilder (CH1={len(ch1)}, D2={len(d2)}, gemittelt={both}), "
-              f"davon {wet} mit Niederschlag")
+        print(f"Vorhersage: {n} Bilder (CH1={len(ch1)}, D2={len(d2)}, gemittelt={both}, "
+              f"radarverankert={anchored}), davon {wet} mit Niederschlag")
         if detail:
             print("Vorhersage je Schritt: " + "  ".join(detail[:48]))
         future_done = n > 0

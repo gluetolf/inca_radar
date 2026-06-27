@@ -57,9 +57,8 @@ def colorize(arr):
 
 
 # ===================== RADAR (ODIM-HDF5, RZC) =========================
-def render_radar(h5path, out_png):
-    """RZC-ODIM-Datei -> eingefaerbtes PNG auf dem gemeinsamen Raster.
-    Rueckgabe: (datetime_utc, max_mmh)."""
+def radar_grid(h5path):
+    """RZC-ODIM-Datei -> (datetime_utc, Feld(DH,DW) mm/h auf dem gemeinsamen Raster)."""
     with h5py.File(h5path, "r") as f:
         data = f["dataset1/data1/data"][:].astype("float64")
         w = dict(f["dataset1/data1/what"].attrs)
@@ -93,15 +92,21 @@ def render_radar(h5path, out_png):
               src_transform=src_transform, src_crs=src_crs,
               dst_transform=DST_TRANSFORM, dst_crs=DST_CRS,
               resampling=Resampling.bilinear, src_nodata=np.nan, dst_nodata=np.nan)
-    Image.fromarray(colorize(dst), "RGBA").save(out_png)
 
     d = (what.get("date") or where.get("date"))
     tm = (what.get("time"))
     d = d.decode() if isinstance(d, bytes) else d
     tm = tm.decode() if isinstance(tm, bytes) else tm
     when = dt.datetime.strptime(d + tm[:4], "%Y%m%d%H%M").replace(tzinfo=dt.timezone.utc)
-    mx = float(np.nanmax(vals)) if np.isfinite(np.nanmax(vals)) else 0.0
-    return when, round(mx, 1)
+    return when, dst
+
+
+def render_radar(h5path, out_png):
+    """RZC-ODIM-Datei -> eingefaerbtes PNG. Rueckgabe: (datetime_utc, max_mmh)."""
+    when, dst = radar_grid(h5path)
+    Image.fromarray(colorize(dst), "RGBA").save(out_png)
+    mxv = np.nanmax(dst)
+    return when, (round(float(mxv), 1) if np.isfinite(mxv) else 0.0)
 
 
 # ===================== LOKALPROGNOSE (data4web CSV) ===================
