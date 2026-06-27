@@ -1,0 +1,41 @@
+name: INCA Radar aktualisieren
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"     # alle ~10 Minuten (GitHub kann das verzoegern)
+  workflow_dispatch:            # zusaetzlich ein Knopf zum manuellen Starten
+
+concurrency:
+  group: inca-build
+  cancel-in-progress: false
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Code holen
+        uses: actions/checkout@v4
+
+      - name: Python einrichten
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Abhaengigkeiten installieren
+        run: pip install -r requirements.txt
+
+      - name: INCA-Daten holen und umwandeln
+        env:
+          INCA_COLLECTION: ${{ secrets.INCA_COLLECTION }}   # optional, sonst Auto-Discovery
+        run: python build.py
+
+      - name: Per FTP auf METAhost laden
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+        with:
+          server: ${{ secrets.FTP_SERVER }}
+          username: ${{ secrets.FTP_USERNAME }}
+          password: ${{ secrets.FTP_PASSWORD }}
+          local-dir: ./site/
+          server-dir: ${{ secrets.FTP_SERVER_DIR }}
+          protocol: ftps         # bei Verbindungsproblemen auf "ftp" aendern
