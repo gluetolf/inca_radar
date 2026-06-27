@@ -272,10 +272,26 @@ def icon_forecast_frames(out_dir, tmp, prefix="f", max_hours=24, now=None):
     lon, lat = _icon_lonlat(cfile)
     print(f"ICON-Gitter: {len(lon)} Zellen, lon {lon.min():.2f}..{lon.max():.2f}, lat {lat.min():.2f}..{lat.max():.2f}")
 
-    # 2) TOT_PREC-Assets (deterministisch) der neuesten Referenz suchen
-    body = {"collections": [ICON_COLLECTION], "forecast:variable": "TOT_PREC",
-            "forecast:perturbed": False, "limit": 100}
-    feats = _post_json(f"{STAC}/search", body).get("features", [])
+    # 2) TOT_PREC-Assets (deterministisch) der NEUESTEN Referenz suchen
+    def _search(extra):
+        body = {"collections": [ICON_COLLECTION], "forecast:variable": "TOT_PREC",
+                "forecast:perturbed": False, "limit": 100}
+        body.update(extra)
+        return _post_json(f"{STAC}/search", body).get("features", [])
+
+    feats = []
+    try:
+        feats = _search({"forecast:reference_datetime": "latest"})
+        if feats:
+            print("ICON: reference_datetime=latest unterstuetzt")
+    except Exception as e:
+        print("ICON: 'latest' nicht unterstuetzt:", e)
+    if not feats:
+        try:
+            feats = _search({"sortby": [{"field": "forecast:reference_datetime", "direction": "desc"}]})
+        except Exception as e:
+            print("ICON: sortby nicht unterstuetzt:", e)
+            feats = _search({})
     print(f"ICON-Suche: {len(feats)} Features")
     if feats:
         print("  Properties-Schluessel:", list(feats[0].get("properties", {}).keys())[:10])
