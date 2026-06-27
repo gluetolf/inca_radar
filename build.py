@@ -17,7 +17,9 @@ import inca_core as c
 
 OUT = os.environ.get("INCA_SITE", "site")
 RADAR_FRAMES = int(os.environ.get("RADAR_FRAMES", "24"))   # ~2 h bei 5-Min-Takt
-FC_HOURS = int(os.environ.get("FC_HOURS", "24"))           # Vorhersagestunden
+FC_HOURS = int(os.environ.get("FC_HOURS", "24"))           # Rueckfall-Vorhersagestunden
+NOWCAST_STEP_MIN = int(os.environ.get("NOWCAST_STEP_MIN", "5"))   # Nowcast-Schrittweite
+NOWCAST_MAX_MIN = int(os.environ.get("NOWCAST_MAX_MIN", "360"))   # Nowcast bis +6 h
 
 
 def _clean():
@@ -26,7 +28,7 @@ def _clean():
         os.remove(f)
 
 
-def build(local_radar=None, local_fc=None):
+def build(local_radar=None, local_fc=None, local_nowcast=None):
     _clean()
     frames, now = [], None
     tmp = tempfile.mkdtemp(prefix="inca-")
@@ -59,51 +61,69 @@ def build(local_radar=None, local_fc=None):
     except Exception as e:
         print("Radar-Teil fehlgeschlagen:", e)
 
-    # ---- Lokalprognose: Zukunft ----
+    # ---- Zukunft: primaer Nowcast (gerastert, 5-Min), sonst Lokalprognose ----
+    future_done = False
     try:
-        if local_fc:
-            fcsv = local_fc
+        if local_nowcast:
+            ncf = local_nowcast
         else:
-            href = c.forecast_latest_precip_asset()
-            print("Prognose-CSV:", href)
-            fcsv = c.download(href, os.path.join(tmp, "fc.csv"))
-        fc = c.parse_forecast_csv(fcsv, max_hours=FC_HOURS)
-        if fc:
-            t0 = sorted(fc)[0]
-            lo, la, _v = fc[t0]
-            print(f"Prognose-Diagnose: {len(fc)} Zeitpunkte in der Datei, "
-                  f"{len(lo)} Punkte; lon {lo.min():.2f}..{lo.max():.2f}, "
-                  f"lat {la.min():.2f}..{la.max():.2f}")
-        times = sorted(fc)
-        if now is not None:
-            cutoff = now + dt.timedelta(hours=FC_HOURS)
-            times = [t for t in times if now < t <= cutoff]
-        else:
-            times = times[:FC_HOURS]
-        wet = 0
-        detail = []
-        for i, t in enumerate(times):
-            lons, lats, vals = fc[t]
-            fn = f"f{i:02d}.png"
-            mx = c.render_forecast(lons, lats, vals, os.path.join(OUT, fn))
-            if mx > 0:
-                wet += 1
-            lead = round((t - now).total_seconds() / 3600) if now else (i + 1)
-            detail.append(f"+{lead}:{len(vals)}:{mx}")
-            frames.append({"file": fn, "time": t.isoformat(), "kind": "forecast", "max_mmh": mx})
-        allmax = max((fr["max_mmh"] for fr in frames if fr["kind"] == "forecast"), default=0)
-        print(f"Prognose: {len(times)} Bilder, davon {wet} mit Niederschlag, max {allmax} mm/h")
-        print("Prognose je Vorlaufzeit (Stunde:Punkte:max mm/h):")
-        print("  " + "  ".join(detail))
+            href = c.nowcast_latest_asset()
+            ncf = c.download(href, os.path.join(tmp, "nowcast.nc"))
+        series = c.render_nowcast(ncf, OUT, prefix="f",
+                                  step_min=NOWCAST_STEP_MIN, max_min=NOWCAST_MAX_MIN)
+        wet = 0; detail = []
+        for when, fn, mx in series:
+            if now is not None and when <= now:
+                try: os.remove(os.path.join(OUT, fn))
+                except OSError: pass
+                continue
+            if mx > 0: wet += 1
+            lead = round((when - now).total_seconds() / 60) if now else 0
+            detail.append(f"+{lead}m:{mx}")
+            frames.append({"file": fn, "time": when.isoformat(), "kind": "forecast", "max_mmh": mx})
+        nfc = sum(1 for f in frames if f["kind"] == "forecast")
+        allmax = max((m for *_, m in series), default=0)
+        print(f"Nowcast: {nfc} Bilder (5-Min), davon {wet} mit Niederschlag, max {allmax} mm/h")
+        print("Nowcast je Vorlaufzeit (Min:max mm/h):  " + "  ".join(detail))
+        future_done = nfc > 0
     except Exception as e:
-        print("Prognose-Teil fehlgeschlagen:", e)
+        print("Nowcast nicht verfuegbar, Rueckfall auf Lokalprognose:", e)
+
+    # ---- Rueckfall: Lokalprognose (data4web), nur wenn kein Nowcast ----
+    if not future_done:
+        try:
+            if local_fc:
+                fcsv = local_fc
+            else:
+                href = c.forecast_latest_precip_asset()
+                print("Prognose-CSV:", href)
+                fcsv = c.download(href, os.path.join(tmp, "fc.csv"))
+            fc = c.parse_forecast_csv(fcsv, max_hours=FC_HOURS)
+            times = sorted(fc)
+            if now is not None:
+                cutoff = now + dt.timedelta(hours=FC_HOURS)
+                times = [t for t in times if now < t <= cutoff]
+            else:
+                times = times[:FC_HOURS]
+            wet = 0
+            for i, t in enumerate(times):
+                lons, lats, vals = fc[t]
+                fn = f"f{i:02d}.png"
+                mx = c.render_forecast(lons, lats, vals, os.path.join(OUT, fn))
+                if mx > 0:
+                    wet += 1
+                frames.append({"file": fn, "time": t.isoformat(), "kind": "forecast", "max_mmh": mx})
+            allmax = max((fr["max_mmh"] for fr in frames if fr["kind"] == "forecast"), default=0)
+            print(f"Lokalprognose (Rueckfall): {len(times)} Bilder, davon {wet} mit Niederschlag, max {allmax} mm/h")
+        except Exception as e:
+            print("Prognose-Teil fehlgeschlagen:", e)
 
     if not frames:
         raise SystemExit("Keine Bilder erzeugt (Radar und Prognose beide fehlgeschlagen).")
 
     frames.sort(key=lambda fr: fr["time"])
     manifest = {
-        "source": "MeteoSchweiz: Radar (Vergangenheit) + Lokalprognose (Zukunft)",
+        "source": "MeteoSchweiz: Radar (Vergangenheit) + Nowcast/Prognose (Zukunft)",
         "bounds": c.BOUNDS,
         "now": now.isoformat() if now else None,
         "frames": frames,
@@ -118,4 +138,5 @@ if __name__ == "__main__":
     a = sys.argv[1:]
     lr = a[a.index("--radar") + 1] if "--radar" in a else None
     lf = a[a.index("--fc") + 1] if "--fc" in a else None
-    build(local_radar=lr, local_fc=lf)
+    ln = a[a.index("--nowcast") + 1] if "--nowcast" in a else None
+    build(local_radar=lr, local_fc=lf, local_nowcast=ln)

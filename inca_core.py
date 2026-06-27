@@ -186,10 +186,70 @@ def render_forecast(lons, lats, vals, out_png, max_dist_deg=0.07):
     return round(mx, 1)
 
 
+# ===================== NOWCAST (INCA, gerastert, NetCDF) =============
+def _nowcast_src(ds):
+    """src_crs und src_transform aus chx/chy + grid_mapping der NetCDF lesen."""
+    from rasterio.crs import CRS as _CRS
+    chx = ds.variables["chx"][:]; chy = ds.variables["chy"][:]
+    gm = ds.variables["grid_mapping"]
+    g = lambda k, d=None: (float(gm.getncattr(k)) if k in gm.ncattrs() else d)
+    proj = ("+proj=somerc +lat_0=%.10f +lon_0=%.10f +k_0=1 +x_0=%.1f +y_0=%.1f "
+            "+ellps=bessel +towgs84=674.374,15.056,405.346,0,0,0,0 +units=m +no_defs" % (
+            g("latitude_of_projection_center", 46.95240555555556),
+            g("longitude_of_projection_center", 7.439583333333333),
+            g("false_easting", 2600000.0), g("false_northing", 1200000.0)))
+    dx = float(chx[1] - chx[0]); dy = float(chy[1] - chy[0])
+    e_min = float(chx[0]) - dx / 2.0
+    n_max = float(chy[-1]) + abs(dy) / 2.0      # chy aufsteigend (Sued->Nord)
+    transform = Affine(dx, 0, e_min, 0, -abs(dy), n_max)
+    return _CRS.from_proj4(proj), transform, (chy[1] > chy[0])
+
+
+def render_nowcast(nc_path, out_dir, prefix="f", step_min=5, max_min=360):
+    """INCA-Nowcast-NetCDF -> Reihe eingefaerbter PNGs auf dem gemeinsamen Raster.
+    Rueckgabe: Liste (datetime_utc, dateiname, max_mmh) ab +step bis +max_min."""
+    import netCDF4 as _nc
+    ds = _nc.Dataset(nc_path)
+    var = next(ds.variables[v] for v in ds.variables if ds.variables[v].ndim == 3)
+    data = np.ma.filled(var[:].astype("float32"), np.nan)
+    tvar = ds.variables["time"]
+    base = dt.datetime.strptime(tvar.units.split("since")[1].strip()[:19], "%Y-%m-%d %H:%M:%S")
+    base = base.replace(tzinfo=dt.timezone.utc)
+    secs = np.array(tvar[:])
+    src_crs, src_transform, north_up = _nowcast_src(ds)
+    every = max(1, int(round(step_min / 5.0)))   # Datei ist 5-Min, ggf. ausduennen
+    out = []
+    n = 0
+    for i in range(data.shape[0]):
+        minute = secs[i] / 60.0
+        if minute <= 0 or minute > max_min or (i % every):
+            continue
+        field = data[i][::-1, :] if north_up else data[i]
+        dst = np.full((DH, DW), np.nan, "float32")
+        reproject(field, dst, src_transform=src_transform, src_crs=src_crs,
+                  dst_transform=DST_TRANSFORM, dst_crs=DST_CRS,
+                  resampling=Resampling.bilinear, src_nodata=np.nan, dst_nodata=np.nan)
+        fn = f"{prefix}{n:02d}.png"
+        Image.fromarray(colorize(dst), "RGBA").save(os.path.join(out_dir, fn))
+        when = base + dt.timedelta(seconds=float(secs[i]))
+        mx = float(np.nanmax(data[i])) if np.isfinite(np.nanmax(data[i])) else 0.0
+        out.append((when, fn, round(mx, 1)))
+        n += 1
+    ds.close()
+    return out
+
+
 # ===================== STAC-Abruf (data.geo.admin.ch) =================
 STAC = os.environ.get("INCA_STAC", "https://data.geo.admin.ch/api/stac/v1")
 RADAR_COLLECTION = os.environ.get("RADAR_COLLECTION", "ch.meteoschweiz.ogd-radar-precip")
 FC_COLLECTION = os.environ.get("FC_COLLECTION", "ch.meteoschweiz.ogd-local-forecasting")
+NOWCAST_COLLECTION = os.environ.get("NOWCAST_COLLECTION", "")  # leer -> Kandidaten testen
+NOWCAST_CANDIDATES = [
+    "ch.meteoschweiz.ogd-nowcasting",
+    "ch.meteoschweiz.ogd-nowcasting-precip",
+    "ch.meteoschweiz.ogd-nowcasting-inca",
+    "ch.meteoschweiz.ogd-forecasting-nowcasting",
+]
 
 
 def _get_json(url, timeout=60):
@@ -234,7 +294,31 @@ def radar_latest_assets(limit=24):
     return [(t.isoformat(), found[t]) for t in times]
 
 
-def forecast_latest_precip_asset():
+def nowcast_latest_asset():
+    """(href) der neuesten Nowcast-Niederschlags-NetCDF (RR/RP-INCA).
+    Testet bei unbekannter Collection mehrere Kandidaten-IDs durch."""
+    import re
+    ids = [NOWCAST_COLLECTION] if NOWCAST_COLLECTION else NOWCAST_CANDIDATES
+    last_err = None
+    for cid in ids:
+        try:
+            data = _get_json(f"{STAC}/collections/{cid}/items?limit=50")
+        except Exception as e:
+            last_err = e
+            continue
+        best = None
+        for feat in data.get("features", []):
+            for k, a in feat.get("assets", {}).items():
+                href = a.get("href", ""); low = os.path.basename(href).lower()
+                if low.endswith(".nc") and ("rr" in low or "rp" in low) and "inca" in low:
+                    m = re.search(r"(\d{12})", low)
+                    ts = m.group(1) if m else low
+                    if best is None or ts > best[0]:
+                        best = (ts, href)
+        if best:
+            print(f"Nowcast-Collection: {cid}  Lauf: {best[0]}")
+            return best[1]
+    raise RuntimeError(f"Keine Nowcast-Niederschlagsdaten gefunden (getestet: {ids}; {last_err})")
     """(href) der Niederschlags-CSV des NEUESTEN Vorhersagelaufs.
     Sammelt rre150-Assets ueber mehrere Items und waehlt den hoechsten
     Referenz-Zeitstempel aus dem Dateinamen (vnut12.lssw.<YYYYMMDDHHMM>.rre150...)."""
