@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-<title>INCA Niederschlagsradar Schweiz</title>
+<title>Niederschlagsradar Schweiz</title>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <style>
@@ -33,7 +33,7 @@
     backdrop-filter:blur(8px);box-shadow:var(--shadow);cursor:pointer;font-size:16px;color:var(--ink);display:grid;place-items:center}
   .map-tools button:active{transform:scale(.94)}.map-tools button.on{background:var(--green);color:#fff;border-color:var(--green)}
   .dock{position:absolute;left:0;right:0;bottom:0;z-index:500;padding:0 14px 14px;display:flex;justify-content:center}
-  .panel{width:100%;max-width:760px;background:var(--panel);backdrop-filter:blur(10px);border:1px solid var(--panel-line);
+  .panel{width:100%;max-width:780px;background:var(--panel);backdrop-filter:blur(10px);border:1px solid var(--panel-line);
     border-radius:18px;box-shadow:var(--shadow);padding:12px 16px 14px}
   .row{display:flex;align-items:center;gap:14px}
   .play{width:46px;height:46px;flex:none;border-radius:50%;border:none;cursor:pointer;background:var(--green);color:#fff;
@@ -44,12 +44,13 @@
   .bigtime{font-size:20px;font-weight:700;letter-spacing:.3px}
   .tag{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;padding:3px 9px;border-radius:999px}
   .tag.now{background:rgba(118,184,42,.16);color:var(--green-dark)}
+  .tag.past{background:rgba(0,0,0,.06);color:var(--muted)}
   .tag.fc{background:rgba(243,162,58,.18);color:#b06b13}
   .track{position:relative;height:30px}
   .ticks{position:absolute;inset:0;display:flex;align-items:center;pointer-events:none}
   .tick{flex:1;height:6px;margin:0 1px;border-radius:3px;background:#cfd6c6;transition:background .2s,height .2s}
-  .tick.now{background:#aab59b}.tick.fc{background:#f0c98a}.tick.active{background:var(--green);height:14px}
-  .nowline{position:absolute;top:-3px;bottom:-3px;width:2px;background:var(--green-dark);border-radius:2px;opacity:.55}
+  .tick.past{background:#aab59b}.tick.fc{background:#f0c98a}.tick.active{background:var(--green);height:14px}
+  .nowline{position:absolute;top:-3px;bottom:-3px;width:2px;background:var(--green-dark);border-radius:2px;opacity:.6}
   input[type=range]{position:absolute;inset:0;width:100%;height:100%;margin:0;opacity:0;cursor:pointer}
   .scalewrap{margin-top:12px}
   .scalehead{display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-bottom:5px}
@@ -69,7 +70,7 @@
 <div id="map"></div>
 <div class="topbar">
   <div class="brand"><span class="mark"></span>
-    <div><h1>Niederschlagsradar · INCA</h1><div class="sub">MeteoSchweiz · jetzt &amp; nächste 6 Stunden</div></div>
+    <div><h1>Niederschlagsradar</h1><div class="sub">MeteoSchweiz · Radar &amp; Prognose</div></div>
   </div>
   <div class="status"><span class="live"></span><span id="updated">lädt…</span></div>
 </div>
@@ -94,7 +95,7 @@
     <div class="scalelabels"><span>0.1</span><span>1</span><span>5</span><span>20</span><span>50+</span></div>
   </div>
 </div></div>
-<div class="loading" id="loading"><div class="errbox" id="loadtext"><div class="spinner"></div>INCA-Daten werden geladen…</div></div>
+<div class="loading" id="loading"><div class="errbox" id="loadtext"><div class="spinner"></div>Daten werden geladen…</div></div>
 
 <script>
 (function(){
@@ -105,7 +106,7 @@
   map.attributionControl.setPrefix(false);
   var LIGHT="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png";
   var DARK ="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png";
-  var base=L.tileLayer(LIGHT,{attribution:'© OpenStreetMap, © CARTO · Radar: MeteoSchweiz INCA',maxZoom:11}).addTo(map);
+  var base=L.tileLayer(LIGHT,{attribution:'© OpenStreetMap, © CARTO · Daten: MeteoSchweiz',maxZoom:11}).addTo(map);
   var dark=false;
   document.getElementById('darkBtn').onclick=function(){dark=!dark;base.setUrl(dark?DARK:LIGHT);this.classList.toggle('on',dark);
     document.body.style.background=dark?'#10140c':'#dfe5d8';document.getElementById('map').style.background=dark?'#10140c':'#dfe5d8';};
@@ -117,23 +118,30 @@
   ].forEach(function(c){L.marker([c[1],c[2]],{interactive:false,keyboard:false,icon:L.divIcon({
      className:'city-label'+(c[3]?' city-home':''),html:'<div class="city-dot"></div>'+c[0],iconSize:[0,0],iconAnchor:[0,0]})}).addTo(map);});
 
-  var frames=[], bounds=null, overlays=[], idx=0, playing=false, timer=null, speed=350, refId=null;
-  function fmt(iso){var d=new Date(iso);return ('0'+d.getHours()).slice(-2)+':'+('0'+d.getMinutes()).slice(-2);}
+  var frames=[],bounds=null,overlays=[],idx=0,playing=false,timer=null,speed=350,refId=null,nowIdx=0,nowMs=0;
+  function pad(n){return ('0'+n).slice(-2)}
+  function hm(d){return pad(d.getHours())+':'+pad(d.getMinutes())}
+  function label(fr){
+    var t=new Date(fr.time).getTime();
+    if(fr.kind==='forecast'){var h=Math.round((t-nowMs)/3.6e6);return {txt:(h<1?'+'+Math.round((t-nowMs)/6e4)+' Min':'+'+h+' h'),cls:'fc'};}
+    var dm=Math.round((nowMs-t)/6e4);
+    if(dm<=2) return {txt:'Jetzt',cls:'now'};
+    return {txt:'vor '+dm+' Min',cls:'past'};
+  }
 
   function clearOverlays(){overlays.forEach(function(o){if(o)map.removeLayer(o)});overlays=[];}
   function ov(i){if(overlays[i])return overlays[i];
-    var o=L.imageOverlay(frames[i]._url, bounds,{opacity:0,interactive:false}).addTo(map);o.setZIndex(200);overlays[i]=o;return o;}
+    var o=L.imageOverlay(frames[i]._url,bounds,{opacity:0,interactive:false}).addTo(map);o.setZIndex(200);overlays[i]=o;return o;}
   function show(i){
     if(!frames.length)return;
     i=Math.max(0,Math.min(frames.length-1,i));
-    ov(i).setOpacity(0.78);
+    ov(i).setOpacity(0.8);
     overlays.forEach(function(o,j){if(o&&j!==i)o.setOpacity(0)});
     if(frames[i+1])ov(i+1);if(frames[i-1])ov(i-1);
     idx=i;document.getElementById('slider').value=i;
-    document.getElementById('bigtime').textContent=fmt(frames[i].time);
-    var tag=document.getElementById('tag'),lm=frames[i].lead_min;
-    if(lm<=0){tag.textContent='Jetzt';tag.className='tag now';}
-    else{tag.textContent='+'+(lm%60===0?(lm/60)+' h':lm+' Min');tag.className='tag fc';}
+    document.getElementById('bigtime').textContent=hm(new Date(frames[i].time));
+    var L1=label(frames[i]),tag=document.getElementById('tag');
+    tag.textContent=L1.txt;tag.className='tag '+L1.cls;
     document.querySelectorAll('.tick').forEach(function(t,j){t.classList.toggle('active',j===i)});
   }
   function step(){show(idx+1>=frames.length?0:idx+1)}
@@ -148,35 +156,31 @@
 
   function buildTimeline(){
     var tk=document.getElementById('ticks');tk.innerHTML='';
-    frames.forEach(function(f){var d=document.createElement('div');d.className='tick '+(f.lead_min<=0?'now':'fc');tk.appendChild(d);});
-    document.getElementById('nowline').style.left=(0.5/frames.length*100)+'%';
+    frames.forEach(function(fr){var d=document.createElement('div');d.className='tick '+(fr.kind==='forecast'?'fc':'past');tk.appendChild(d);});
+    document.getElementById('nowline').style.left=((nowIdx+1)/frames.length*100)+'%';
     slider.max=frames.length-1;
   }
-
   function apply(data){
-    if(data.reference_time===refId) return;   // unveraendert
-    refId=data.reference_time;
+    if(data.frames.map(function(f){return f.time}).join()===refId) return;
+    refId=data.frames.map(function(f){return f.time}).join();
     clearOverlays();
     bounds=data.bounds;
-    frames=data.frames.map(function(f){var c=Object.assign({},f);c._url=(data.tile_base||'')+f.file;return c;});
+    frames=data.frames.map(function(f){var o=Object.assign({},f);o._url=(data.tile_base||'')+f.file;return o;});
+    nowMs = data.now? new Date(data.now).getTime() : new Date(frames[frames.length-1].time).getTime();
+    nowIdx=0;for(var i=0;i<frames.length;i++){if(frames[i].kind==='radar')nowIdx=i;}
     buildTimeline();
-    document.getElementById('updated').textContent="Referenz "+fmt(data.reference_time)+" · "+frames.length+" Bilder";
+    document.getElementById('updated').textContent="Stand "+hm(new Date(nowMs))+" · "+frames.length+" Bilder";
     document.getElementById('loading').style.display='none';
-    var start=Math.min(idx,frames.length-1); if(!(start>=0))start=0;
-    show(start); if(!playing) play();
+    show(nowIdx); if(!playing) play();
   }
-  function fail(msg){
-    if(frames.length) return; // schon Daten -> stiller Fehler
-    document.getElementById('loadtext').innerHTML="⚠️ "+msg;
-  }
+  function fail(msg){if(frames.length)return;document.getElementById('loadtext').innerHTML="⚠️ "+msg;}
   function load(){
     fetch('frames.json?'+Date.now(),{cache:'no-store'})
       .then(function(r){return r.ok?r.json():r.json().then(function(j){throw new Error(j.error||('HTTP '+r.status))});})
-      .then(function(d){if(d.frames&&d.frames.length)apply(d);else fail('Keine INCA-Daten verfügbar.');})
+      .then(function(d){if(d.frames&&d.frames.length)apply(d);else fail('Keine Daten verfügbar.');})
       .catch(function(e){fail((e&&e.message)||'Daten konnten nicht geladen werden.');});
   }
-  load();
-  setInterval(load, 3*60*1000);  // alle 3 Min auf neuen Lauf pruefen
+  load(); setInterval(load,5*60*1000);
 
   document.addEventListener('keydown',function(e){
     if(e.code==='Space'){e.preventDefault();playing?pause():play();}
