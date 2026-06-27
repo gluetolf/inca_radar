@@ -294,11 +294,40 @@ def radar_latest_assets(limit=24):
     return [(t.isoformat(), found[t]) for t in times]
 
 
+def _all_collection_ids():
+    """Alle Collection-IDs der STAC-API (mit Pagination) holen."""
+    url = f"{STAC}/collections?limit=100"
+    ids = []
+    for _ in range(30):
+        data = _get_json(url)
+        for col in data.get("collections", []):
+            cid = col.get("id", "")
+            if cid:
+                ids.append(cid)
+        nxt = next((l.get("href") for l in data.get("links", []) if l.get("rel") == "next"), None)
+        if not nxt:
+            break
+        url = nxt
+    return ids
+
+
 def nowcast_latest_asset():
     """(href) der neuesten Nowcast-Niederschlags-NetCDF (RR/RP-INCA).
-    Testet bei unbekannter Collection mehrere Kandidaten-IDs durch."""
+    Erkennt die Nowcast-Collection automatisch aus der STAC-Liste (Name enthaelt
+    'nowcast' oder 'inca'); faellt auf bekannte Kandidaten zurueck."""
     import re
-    ids = [NOWCAST_COLLECTION] if NOWCAST_COLLECTION else NOWCAST_CANDIDATES
+    if NOWCAST_COLLECTION:
+        ids = [NOWCAST_COLLECTION]
+    else:
+        try:
+            disc = [c for c in _all_collection_ids()
+                    if "nowcast" in c.lower() or "inca" in c.lower()]
+            if disc:
+                print("Nowcast-Kandidaten erkannt:", disc)
+            ids = disc or NOWCAST_CANDIDATES
+        except Exception as e:
+            print("Collection-Liste nicht abrufbar:", e)
+            ids = NOWCAST_CANDIDATES
     last_err = None
     for cid in ids:
         try:
@@ -319,6 +348,9 @@ def nowcast_latest_asset():
             print(f"Nowcast-Collection: {cid}  Lauf: {best[0]}")
             return best[1]
     raise RuntimeError(f"Keine Nowcast-Niederschlagsdaten gefunden (getestet: {ids}; {last_err})")
+
+
+def forecast_latest_precip_asset():
     """(href) der Niederschlags-CSV des NEUESTEN Vorhersagelaufs.
     Sammelt rre150-Assets ueber mehrere Items und waehlt den hoechsten
     Referenz-Zeitstempel aus dem Dateinamen (vnut12.lssw.<YYYYMMDDHHMM>.rre150...)."""
