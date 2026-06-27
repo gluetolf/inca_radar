@@ -143,6 +143,8 @@ def convert_file(nc_path, out_dir, step_minutes=5):
 
 
 # ---- STAC-Abruf -------------------------------------------------------
+import re
+
 def _get_json(url, timeout=60):
     import urllib.request
     req = urllib.request.Request(url, headers={"Accept": "application/json"})
@@ -150,58 +152,93 @@ def _get_json(url, timeout=60):
         return json.load(r)
 
 
+def _tokens(s):
+    return set(t for t in re.split(r"[^a-z0-9]+", (s or "").lower()) if t)
+
+
+def _all_collections():
+    """Alle Collections holen (mit Pagination)."""
+    cols, url, pages = [], f"{STAC_BASE}/collections?limit=100", 0
+    while url and pages < 60:
+        data = _get_json(url)
+        cols.extend(data.get("collections", []))
+        url = next((l.get("href") for l in data.get("links", []) if l.get("rel") == "next"), None)
+        pages += 1
+    return cols
+
+
+_BAD = ("type", "snow", "snowfall", "schnee", "temperature", "temperatur",
+        "sunshine", "sonnenschein", "accumulation", "snowline")
+
+
+def _score_collection(c):
+    cid = (c.get("id") or "").lower()
+    if not cid.startswith("ch.meteoschweiz"):
+        return -999
+    toks = _tokens(cid + " " + str(c.get("title", "")) + " " + str(c.get("description", "")))
+    s = 0
+    if "inca" in toks: s += 6
+    if "nowcasting" in toks or "nowcast" in toks: s += 4
+    if {"precip", "precipitation", "niederschlag", "rr"} & toks: s += 3
+    if "rate" in toks: s += 1
+    for b in _BAD:
+        if b in toks: s -= 5
+    return s
+
+
 def _discover_collection():
-    """INCA-Niederschlags-Collection automatisch finden (oder fest gesetzte ID)."""
     if INCA_COLLECTION:
+        print("INCA_COLLECTION fest gesetzt:", INCA_COLLECTION)
         return INCA_COLLECTION
-    data = _get_json(f"{STAC_BASE}/collections")
-    cols = data.get("collections", [])
-    def score(c):
-        text = (c.get("id", "") + " " + str(c.get("title", "") or "")).lower()
-        s = 0
-        if "inca" in text or "nowcast" in text:
-            s += 5
-        if "precip" in text or "niederschlag" in text or "rr" in text or "rp" in text:
-            s += 3
-        if "type" in text or "snow" in text or "schnee" in text:
-            s -= 4
-        return s
-    ranked = sorted(cols, key=score, reverse=True)
-    if ranked and score(ranked[0]) > 0:
-        return ranked[0]["id"]
-    raise RuntimeError("Keine INCA-Collection gefunden. Bitte INCA_COLLECTION setzen. "
-                       f"Siehe {STAC_BASE}/collections")
+    cols = _all_collections()
+    scored = sorted(((_score_collection(c), c.get("id")) for c in cols), reverse=True)
+    mete = [(s, i) for s, i in scored if (i or "").lower().startswith("ch.meteoschweiz")]
+    print("Gefundene MeteoSchweiz-Collections (Top 20 nach Eignung):")
+    for s, i in mete[:20]:
+        print(f"   score={s:>3}  {i}")
+    if scored and scored[0][0] >= 6:
+        print("Automatisch gewaehlt:", scored[0][1])
+        return scored[0][1]
+    raise RuntimeError(
+        "Keine eindeutige INCA-Niederschlags-Collection gefunden. "
+        "Bitte die passende ID aus der obigen Liste als Secret INCA_COLLECTION setzen.")
+
+
+def _asset_candidates(assets):
+    out = []
+    for k, a in assets.items():
+        href = (a.get("href") or "")
+        if not href.lower().endswith(".nc"):
+            continue
+        toks = _tokens(k + " " + href)
+        s = 4
+        if {"rr", "precip", "precipitation"} & toks: s += 3
+        if "rate" in toks: s += 1
+        for b in _BAD + ("pt", "nt"):
+            if b in toks: s -= 5
+        out.append((s, k, a))
+    return sorted(out, reverse=True)
 
 
 def stac_find_latest():
-    """Gibt (reference_datetime_utc, asset_href) des neuesten INCA-Niederschlags zurueck."""
+    """(reference_datetime_utc, asset_href) des neuesten INCA-Niederschlags."""
     cid = _discover_collection()
     items = _get_json(f"{STAC_BASE}/collections/{cid}/items?limit=1")
     feats = items.get("features", [])
     if not feats:
         raise RuntimeError(f"Keine Items in Collection {cid}.")
     feat = feats[0]
-    dtime = feat.get("properties", {}).get("datetime") or feat.get("properties", {}).get("forecast:reference_datetime")
-    assets = feat.get("assets", {})
-    def asc(kv):
-        k, a = kv
-        href = a.get("href", "").lower()
-        key = k.lower()
-        s = 0
-        if href.endswith(".nc"):
-            s += 3
-        if key.startswith("rp") or key.startswith("rr") or "precip" in key:
-            s += 3
-        if "type" in key or "snow" in key or key.startswith("nt") or key.startswith("pt"):
-            s -= 4
-        return s
-    cands = sorted(assets.items(), key=asc, reverse=True)
-    if not cands or asc(cands[0]) <= 0:
-        raise RuntimeError(f"Kein passendes Niederschlags-Asset in {cid}. Assets: {list(assets)}")
-    return dtime, cands[0][1]["href"]
+    props = feat.get("properties", {})
+    dtime = props.get("datetime") or props.get("forecast:reference_datetime")
+    cands = _asset_candidates(feat.get("assets", {}))
+    if not cands:
+        raise RuntimeError(f"Kein NetCDF-Niederschlags-Asset in {cid}. "
+                           f"Assets: {list(feat.get('assets', {}))}")
+    print("Gewaehltes Asset:", cands[0][1])
+    return dtime, cands[0][2]["href"]
 
 
-def download(href, dest, timeout=120):
+def download(href, dest, timeout=180):
     import urllib.request
     urllib.request.urlretrieve(href, dest)
     return dest
