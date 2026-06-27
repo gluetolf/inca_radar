@@ -52,7 +52,10 @@ def build(local_radar=None, local_fc=None):
             frames.append({"file": fn, "time": when.isoformat(), "kind": "radar", "max_mmh": mx})
         if rendered:
             now = rendered[-1][0]
-        print(f"Radar: {len(rendered)} Bilder gerendert")
+            span = f"{rendered[0][0].strftime('%H:%M')}–{rendered[-1][0].strftime('%H:%M')} UTC"
+            print(f"Radar: {len(rendered)} Bilder ({span})")
+        else:
+            print("Radar: 0 Bilder")
     except Exception as e:
         print("Radar-Teil fehlgeschlagen:", e)
 
@@ -65,18 +68,28 @@ def build(local_radar=None, local_fc=None):
             print("Prognose-CSV:", href)
             fcsv = c.download(href, os.path.join(tmp, "fc.csv"))
         fc = c.parse_forecast_csv(fcsv, max_hours=FC_HOURS)
+        if fc:
+            t0 = sorted(fc)[0]
+            lo, la, _v = fc[t0]
+            print(f"Prognose-Diagnose: {len(fc)} Zeitpunkte in der Datei, "
+                  f"{len(lo)} Punkte; lon {lo.min():.2f}..{lo.max():.2f}, "
+                  f"lat {la.min():.2f}..{la.max():.2f}")
         times = sorted(fc)
         if now is not None:
             cutoff = now + dt.timedelta(hours=FC_HOURS)
             times = [t for t in times if now < t <= cutoff]
         else:
             times = times[:FC_HOURS]
+        wet = 0
         for i, t in enumerate(times):
             lons, lats, vals = fc[t]
             fn = f"f{i:02d}.png"
             mx = c.render_forecast(lons, lats, vals, os.path.join(OUT, fn))
+            if mx > 0:
+                wet += 1
             frames.append({"file": fn, "time": t.isoformat(), "kind": "forecast", "max_mmh": mx})
-        print(f"Prognose: {len(times)} Bilder gerendert")
+        allmax = max((fr["max_mmh"] for fr in frames if fr["kind"] == "forecast"), default=0)
+        print(f"Prognose: {len(times)} Bilder, davon {wet} mit Niederschlag, max {allmax} mm/h")
     except Exception as e:
         print("Prognose-Teil fehlgeschlagen:", e)
 
