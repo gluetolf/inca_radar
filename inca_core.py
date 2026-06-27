@@ -261,18 +261,17 @@ def _icon_constants_href():
 
 _ICON_IDX = _ICON_MASK = None
 
-def icon_forecast_frames(out_dir, tmp, prefix="f", max_hours=24, now=None):
-    """Neueste ICON-CH1-TOT_PREC-Vorhersage (deterministisch) -> PNG-Reihe.
-    Rueckgabe: Liste (datetime_utc, dateiname, max_mmh). Stuendlich, entkumuliert."""
+def icon_ch1_fields(tmp, max_hours=30, now=None):
+    """Neueste ICON-CH1-TOT_PREC-Vorhersage -> dict {datetime_utc: Feld(DH,DW) mm/h}.
+    Stuendlich, entkumuliert, geglaettet, ausserhalb der Domaene NaN."""
     global _ICON_IDX, _ICON_MASK
     from scipy.spatial import cKDTree
-    # 1) Gitter-Koordinaten (Konstanten)
+    from scipy.ndimage import gaussian_filter
     chref = _icon_constants_href()
     cfile = download(chref, os.path.join(tmp, "icon_const.grib2"))
     lon, lat = _icon_lonlat(cfile)
-    print(f"ICON-Gitter: {len(lon)} Zellen, lon {lon.min():.2f}..{lon.max():.2f}, lat {lat.min():.2f}..{lat.max():.2f}")
+    print(f"ICON-CH1-Gitter: {len(lon)} Zellen, lon {lon.min():.2f}..{lon.max():.2f}, lat {lat.min():.2f}..{lat.max():.2f}")
 
-    # 2) TOT_PREC-Assets (deterministisch) der NEUESTEN Referenz suchen
     def _search(extra):
         body = {"collections": [ICON_COLLECTION], "forecast:variable": "TOT_PREC",
                 "forecast:perturbed": False, "limit": 100}
@@ -281,8 +280,8 @@ def icon_forecast_frames(out_dir, tmp, prefix="f", max_hours=24, now=None):
 
     feats, chosen = [], None
     base = (now or dt.datetime.now(dt.timezone.utc)).replace(minute=0, second=0, microsecond=0)
-    base = base - dt.timedelta(hours=base.hour % 3)        # auf 3-Stunden-Raster
-    for k in range(0, 13):                                  # bis ~36 h zurueck
+    base = base - dt.timedelta(hours=base.hour % 3)
+    for k in range(0, 13):
         ref = base - dt.timedelta(hours=3 * k)
         refiso = ref.strftime("%Y-%m-%dT%H:%M:%SZ")
         try:
@@ -293,10 +292,7 @@ def icon_forecast_frames(out_dir, tmp, prefix="f", max_hours=24, now=None):
             feats, chosen = fs, refiso
             break
     if not feats:
-        feats = _search({})                                # Notnagel
-    print(f"ICON-Suche: {len(feats)} Features, gewaehlte Referenz {chosen}")
-    if feats:
-        print("  Properties-Schluessel:", list(feats[0].get("properties", {}).keys())[:10])
+        feats = _search({})
     recs = []
     for ft in feats:
         p = ft.get("properties", {})
@@ -307,16 +303,12 @@ def icon_forecast_frames(out_dir, tmp, prefix="f", max_hours=24, now=None):
         if ref and hz is not None and href:
             recs.append((ref, hz, href))
     if not recs:
-        sample = feats[0] if feats else {}
-        raise RuntimeError(f"Keine ICON-TOT_PREC-Assets gefunden (Features: {len(feats)}; "
-                           f"Properties: {list(sample.get('properties', {}).keys())[:10]}; "
-                           f"Assets: {list(sample.get('assets', {}).keys())[:5]})")
+        raise RuntimeError(f"Keine ICON-CH1-TOT_PREC-Assets gefunden (Features: {len(feats)})")
     latest = max(r[0] for r in recs)
     series = sorted((hz, href) for ref, hz, href in recs if ref == latest)
     ref_dt = dt.datetime.fromisoformat(latest.replace("Z", "+00:00"))
-    print(f"ICON-Referenz: {latest}  Vorlaufzeiten: {len(series)} (bis +{int(series[-1][0])}h)")
+    print(f"ICON-CH1-Referenz: {latest}  Vorlaufzeiten: {len(series)}")
 
-    # 3) Zuordnung Gitterzelle -> Zielpixel (einmalig)
     if _ICON_IDX is None:
         gx = DST_W + (np.arange(DW) + 0.5) * DST_RES
         gy = DST_N - (np.arange(DH) + 0.5) * DST_RES
@@ -324,10 +316,9 @@ def icon_forecast_frames(out_dir, tmp, prefix="f", max_hours=24, now=None):
         tree = cKDTree(np.column_stack([lon, lat]))
         dist, idx = tree.query(np.column_stack([GX.ravel(), GY.ravel()]), k=1)
         _ICON_IDX = idx
-        _ICON_MASK = dist > 0.02   # ausserhalb der ICON-Domaene -> transparent
+        _ICON_MASK = dist > 0.02
 
-    # 4) Entkumulieren + rendern
-    out = []; prev = None; n = 0
+    fields = {}; prev = None
     for hz, href in series:
         if hz > max_hours:
             break
@@ -338,18 +329,101 @@ def icon_forecast_frames(out_dir, tmp, prefix="f", max_hours=24, now=None):
             continue
         precip = np.clip(precip, 0, None)
         field = precip[_ICON_IDX].astype("float32").reshape(DH, DW)
-        from scipy.ndimage import gaussian_filter
-        field = gaussian_filter(field, sigma=1.1)          # weiche Verlaeufe (App-Look)
-        field = field.reshape(-1)
-        field[_ICON_MASK] = np.nan
-        grid = field.reshape(DH, DW)
-        fn = f"{prefix}{n:02d}.png"
-        Image.fromarray(colorize(grid), "RGBA").save(os.path.join(out_dir, fn))
-        when = ref_dt + dt.timedelta(hours=hz)
-        mx = float(np.nanmax(precip)) if precip.size else 0.0
-        out.append((when, fn, round(mx, 1)))
-        n += 1
-    return out
+        field = gaussian_filter(field, sigma=1.1)
+        field = field.reshape(-1); field[_ICON_MASK] = np.nan
+        fields[ref_dt + dt.timedelta(hours=hz)] = field.reshape(DH, DW)
+    return fields
+
+
+# ===================== ICON-D2 (DWD Open Data, 15-Min) ===============
+DWD_ICOND2_BASE = os.environ.get("DWD_ICOND2_BASE", "https://opendata.dwd.de/weather/nwp/icon-d2/grib")
+
+
+def _http(url, timeout=120):
+    import urllib.request
+    with urllib.request.urlopen(url, timeout=timeout) as r:
+        return r.read()
+
+
+def icond2_fields(tmp, max_hours=12, now=None):
+    """Neueste DWD-ICON-D2-TOT_PREC (regulaeres Gitter, 15-Min) -> dict {datetime: Feld(DH,DW) mm/h}.
+    Entkumuliert und auf mm/h umgerechnet; ausserhalb der Domaene NaN."""
+    import bz2, re, eccodes as ec
+    from scipy.ndimage import gaussian_filter
+    base = (now or dt.datetime.now(dt.timezone.utc)).replace(minute=0, second=0, microsecond=0)
+    base = base - dt.timedelta(hours=base.hour % 3)
+    chosen, files = None, []
+    for k in range(0, 6):                                   # bis ~15 h zurueck (Publikationslag)
+        run = base - dt.timedelta(hours=3 * k)
+        url = f"{DWD_ICOND2_BASE}/{run:%H}/tot_prec/"
+        datestr = run.strftime("%Y%m%d%H")
+        try:
+            html = _http(url).decode("utf-8", "ignore")
+        except Exception:
+            continue
+        names = re.findall(r'href="([^"]+)"', html)
+        sel = [n for n in names if "regular-lat-lon" in n and "tot_prec" in n
+               and n.endswith(".bz2") and datestr in n]
+        if sel:
+            chosen, files = run, sorted(set(sel)); break
+    if not files:
+        raise RuntimeError("Keine ICON-D2 tot_prec-Dateien (regular-lat-lon) gefunden")
+    # Vorlaufstunde aus Dateiname (_NNN_) -> nur bis max_hours laden
+    def _hh(n):
+        m = re.search(r"_(\d{3})_2d_tot_prec", n)
+        return int(m.group(1)) if m else 999
+    files = [n for n in files if _hh(n) <= max_hours]
+    print(f"ICON-D2-Lauf: {chosen:%Y-%m-%dT%H:%M}Z  Dateien: {len(files)} (bis +{max_hours}h)")
+
+    raw = []          # (validtime, akkumuliertes Feld auf DST)
+    for n in files:
+        full = n if n.startswith("http") else (f"{DWD_ICOND2_BASE}/{chosen:%H}/tot_prec/" + n.split("/")[-1])
+        try:
+            g = bz2.decompress(_http(full))
+        except Exception as e:
+            print("  D2-Datei uebersprungen:", e); continue
+        p = os.path.join(tmp, "d2.grib2"); open(p, "wb").write(g)
+        f = open(p, "rb")
+        while True:
+            gid = ec.codes_grib_new_from_file(f)
+            if gid is None:
+                break
+            Ni = ec.codes_get(gid, "Ni"); Nj = ec.codes_get(gid, "Nj")
+            lat0 = ec.codes_get(gid, "latitudeOfFirstGridPointInDegrees")
+            lon0 = ec.codes_get(gid, "longitudeOfFirstGridPointInDegrees")
+            di = ec.codes_get(gid, "iDirectionIncrementInDegrees")
+            dj = ec.codes_get(gid, "jDirectionIncrementInDegrees")
+            js = ec.codes_get(gid, "jScansPositively")
+            vd = ec.codes_get(gid, "validityDate"); vt = ec.codes_get(gid, "validityTime")
+            vals = np.array(ec.codes_get_values(gid), dtype="float32").reshape(Nj, Ni)
+            ec.codes_release(gid)
+            if lon0 > 180:
+                lon0 -= 360.0
+            if js == 1:                                     # Sued zuerst -> nach Nord oben drehen
+                vals = vals[::-1, :]; top = lat0 + (Nj - 1) * dj
+            else:
+                top = lat0
+            src_t = Affine(di, 0, lon0 - di / 2, 0, -dj, top + dj / 2)
+            dst = np.full((DH, DW), np.nan, "float32")
+            reproject(vals, dst, src_transform=src_t, src_crs=CRS.from_epsg(4326),
+                      dst_transform=DST_TRANSFORM, dst_crs=DST_CRS,
+                      resampling=Resampling.bilinear, src_nodata=np.nan, dst_nodata=np.nan)
+            when = dt.datetime.strptime(f"{int(vd):08d}{int(vt):04d}", "%Y%m%d%H%M").replace(tzinfo=dt.timezone.utc)
+            raw.append((when, dst))
+        f.close()
+    raw.sort(key=lambda x: x[0])
+    if not raw:
+        raise RuntimeError("ICON-D2: keine GRIB-Nachrichten gelesen")
+    # Entkumulieren -> mm/h
+    fields = {}; prev = None; prevt = None
+    for when, acc in raw:
+        if prev is not None:
+            dthr = max((when - prevt).total_seconds() / 3600.0, 1e-6)
+            rate = np.clip(acc - prev, 0, None) / dthr
+            fields[when] = gaussian_filter(rate, sigma=0.8)
+        prev, prevt = acc, when
+    print(f"ICON-D2: {len(fields)} Felder (15-Min)")
+    return fields
 
 
 # ===================== NOWCAST (INCA, gerastert, NetCDF) =============
