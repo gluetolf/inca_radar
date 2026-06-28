@@ -83,7 +83,7 @@
 <div id="map"></div>
 <div class="topbar">
   <div class="brand"><span class="mark"></span>
-    <div><h1>Niederschlagsradar</h1><div class="sub">Radar &amp; Prognose · MeteoSchweiz, DWD</div></div>
+    <div><h1>Niederschlagsradar</h1><div class="sub">Radar &amp; Prognose · MeteoSchweiz, DWD, Météo-France</div></div>
   </div>
   <div class="status"><span class="live"></span><span id="updated">lädt…</span></div>
 </div>
@@ -129,7 +129,7 @@
   map.attributionControl.setPrefix(false);
   var LIGHT="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png";
   var DARK ="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png";
-  var base=L.tileLayer(LIGHT,{attribution:'© OpenStreetMap, © CARTO · Daten: MeteoSchweiz, DWD',maxZoom:11}).addTo(map);
+  var base=L.tileLayer(LIGHT,{attribution:'© OpenStreetMap, © CARTO · Daten: MeteoSchweiz, DWD, Météo-France',maxZoom:11}).addTo(map);
   var dark=false;
   document.getElementById('darkBtn').onclick=function(){dark=!dark;base.setUrl(dark?DARK:LIGHT);this.classList.toggle('on',dark);
     document.body.style.background=dark?'#10140c':'#dfe5d8';document.getElementById('map').style.background=dark?'#10140c':'#dfe5d8';};

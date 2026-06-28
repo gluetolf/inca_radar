@@ -29,6 +29,7 @@ RADAR_FRAMES = int(os.environ.get("RADAR_FRAMES", "24"))   # ~2 h bei 5-Min-Takt
 FC_HOURS = int(os.environ.get("FC_HOURS", "24"))           # Rueckfall-Vorhersagestunden
 ICON_HOURS = int(os.environ.get("ICON_HOURS", "30"))       # ICON-CH1 bis +X h (max 33)
 ICOND2_HOURS = int(os.environ.get("ICOND2_HOURS", "12"))   # ICON-D2 (15-Min) bis +X h
+AROME_HOURS = int(os.environ.get("AROME_HOURS", "12"))     # AROME (Météo-France) bis +X h
 BLEND_MIN = float(os.environ.get("BLEND_MIN", "60"))       # Radar-Verankerung der Vorhersage (Min)
 
 
@@ -78,15 +79,15 @@ def build(local_radar=None, local_fc=None, local_icon_dir=None):
     except Exception as e:
         print("Radar-Teil fehlgeschlagen:", e)
 
-    # ---- Zukunft: Mittelwert ICON-CH1 + ICON-D2, sonst das funktionierende Modell ----
+    # ---- Zukunft: Mittelwert aus ICON-CH1 + ICON-D2 + AROME, sonst die vorhandenen ----
     future_done = False
     try:
         import numpy as np
         from PIL import Image
         if local_icon_dir:
             raise RuntimeError("lokaler ICON-Test nicht implementiert")
-        # Beide Modelle unabhaengig holen. Faellt eines aus, bleibt das andere -> Fallback.
-        ch1, d2 = {}, {}      # je {Zeit: Raster mm/h}
+        # Alle Modelle unabhaengig holen. Faellt eines aus, bleiben die anderen -> Fallback.
+        ch1, d2, arome = {}, {}, {}      # je {Zeit: Raster mm/h}
         try:
             ch1 = c.icon_ch1_fields(tmp, max_hours=ICON_HOURS, now=now)
         except Exception as e:
@@ -95,43 +96,52 @@ def build(local_radar=None, local_fc=None, local_icon_dir=None):
             d2 = c.icond2_fields(tmp, max_hours=ICOND2_HOURS, now=now)
         except Exception as e:
             import traceback; traceback.print_exc(); print("ICON-D2 fehlgeschlagen:", e)
+        try:
+            arome = c.arome_fields(tmp, max_hours=AROME_HOURS, now=now)
+        except Exception as e:
+            import traceback; traceback.print_exc(); print("AROME fehlgeschlagen:", e)
 
-        # ICON-CH1 ist nur stuendlich. Damit jeder 15-Min-Schritt denselben Charakter
-        # hat (kein "Pulsieren"), CH1 linear zwischen den vollen Stunden interpolieren.
+        # CH1 und AROME sind stuendlich -> linear auf die 15-Min-Schritte interpolieren,
+        # damit jeder Schritt denselben Charakter hat (kein "Pulsieren").
         import bisect
-        ch1_t = sorted(ch1)
-        def ch1_at(t):
-            if t in ch1:
-                return ch1[t]                                   # exakter Stundenwert
-            if not ch1_t or t < ch1_t[0] or t > ch1_t[-1]:
-                return None                                     # ausserhalb des CH1-Bereichs
-            i = bisect.bisect_left(ch1_t, t)
-            t0, t1 = ch1_t[i - 1], ch1_t[i]                     # umliegende Stunden
-            f = (t - t0).total_seconds() / (t1 - t0).total_seconds()
-            return (1 - f) * ch1[t0] + f * ch1[t1]             # lineare Interpolation
+        def interp_factory(d):
+            ts = sorted(d)
+            def at(t):
+                if t in d:
+                    return d[t]
+                if not ts or t < ts[0] or t > ts[-1]:
+                    return None
+                i = bisect.bisect_left(ts, t)
+                t0, t1 = ts[i - 1], ts[i]
+                f = (t - t0).total_seconds() / (t1 - t0).total_seconds()
+                return (1 - f) * d[t0] + f * d[t1]
+            return at
+        ch1_at = interp_factory(ch1)
+        arome_at = interp_factory(arome)
 
-        # Zeitachse = alle Zeitpunkte beider Modelle, auf das Vorhersagefenster begrenzt
-        times = sorted(set(ch1) | set(d2))
+        # Zeitachse = alle Zeitpunkte aller Modelle, auf das Vorhersagefenster begrenzt
+        times = sorted(set(ch1) | set(d2) | set(arome))
         if now is not None:
             cutoff = now + dt.timedelta(hours=ICON_HOURS)
             times = [t for t in times if now < t <= cutoff]
-        wet = n = both = anchored = 0; detail = []
+        wet = n = meaned = anchored = with_a = 0; detail = []
         for t in times:
-            a = ch1_at(t); b = d2.get(t)                        # CH1 (ggf. interpoliert), D2
-            parts = [x for x in (a, b) if x is not None]
+            a = ch1_at(t); b = d2.get(t); cc = arome_at(t)      # CH1, D2, AROME (ggf. interpoliert)
+            parts = [x for x in (a, b, cc) if x is not None]
             if not parts:
                 continue
-            interp = "i" if (a is not None and t not in ch1) else ""   # i = interpolierter CH1-Wert
-            # Kernregel: beide vorhanden -> Mittelwert je Pixel (nanmean mittelt nur,
-            # wo beide einen Wert haben; sonst bleibt der vorhandene Wert stehen).
+            # Kernregel: Mittelwert je Pixel ueber alle vorhandenen Modelle. nanmean mittelt
+            # pro Pixel nur dort, wo Werte da sind; wo nur eines liefert (z. B. AROME fehlt
+            # im Osten), bleibt dessen Wert -> automatisch weicher Fallback ohne harte Kante.
             if len(parts) > 1:
-                both += 1
+                meaned += 1
                 with np.errstate(all="ignore"):
                     field = np.nanmean(np.stack(parts), axis=0)
-            else:                                               # nur ein Modell -> dieses
+            else:
                 field = parts[0]
-            # Uebergang glaetten: in den ersten BLEND_MIN Minuten zum letzten Radarbild
-            # hin ueberblenden (Gewicht w faellt linear von 1 auf 0), nur wo beide Daten haben.
+            if cc is not None:
+                with_a += 1
+            # Uebergang glaetten: in den ersten BLEND_MIN Minuten zum letzten Radarbild ueberblenden
             if last_radar is not None and now is not None:
                 lead_min = (t - now).total_seconds() / 60.0
                 if 0 < lead_min < BLEND_MIN:
@@ -146,14 +156,17 @@ def build(local_radar=None, local_fc=None, local_icon_dir=None):
             mx = round(float(mxv), 1) if np.isfinite(mxv) else 0.0   # fuer den "trocken"-Hinweis
             if mx > 0:
                 wet += 1
-            # Diagnose-Etikett: welche Quelle(n) das Bild gespeist haben
-            tag = ("CH1" + interp + "+D2") if (a is not None and b is not None) else (("CH1" + interp) if a is not None else "D2")
+            # Diagnose-Etikett: welche Quelle(n) das Bild gespeist haben (i = interpoliert)
+            srcs = []
+            if a is not None:  srcs.append("CH1" + ("i" if t not in ch1 else ""))
+            if b is not None:  srcs.append("D2")
+            if cc is not None: srcs.append("A" + ("i" if t not in arome else ""))
             lead = round((t - now).total_seconds() / 3600, 2) if now else 0
-            detail.append(f"+{lead}h[{tag}]:{mx}")
+            detail.append(f"+{lead}h[{'+'.join(srcs)}]:{mx}")
             frames.append({"file": fn, "time": t.isoformat(), "kind": "forecast", "max_mmh": mx})
             n += 1
-        print(f"Vorhersage: {n} Bilder (CH1={len(ch1)}, D2={len(d2)}, gemittelt={both}, "
-              f"radarverankert={anchored}), davon {wet} mit Niederschlag")
+        print(f"Vorhersage: {n} Bilder (CH1={len(ch1)}, D2={len(d2)}, AROME={len(arome)}, "
+              f"gemittelt={meaned}, mit_AROME={with_a}, radarverankert={anchored}), davon {wet} mit Niederschlag")
         if detail:
             print("Vorhersage je Schritt: " + "  ".join(detail[:48]))
         future_done = n > 0
@@ -195,7 +208,7 @@ def build(local_radar=None, local_fc=None, local_icon_dir=None):
 
     frames.sort(key=lambda fr: fr["time"])
     manifest = {
-        "source": "Radar & ICON-CH1: MeteoSchweiz · ICON-D2: DWD (Vorhersage = Mittelwert)",
+        "source": "Radar & ICON-CH1: MeteoSchweiz · ICON-D2: DWD · AROME: Météo-France (Vorhersage = Mittelwert)",
         "bounds": c.BOUNDS,
         "now": now.isoformat() if now else None,
         "v": int(dt.datetime.now(dt.timezone.utc).timestamp()),   # Cache-Buster pro Build

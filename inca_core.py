@@ -470,6 +470,140 @@ def icond2_fields(tmp, max_hours=12, now=None):
     return fields
 
 
+# ===================== AROME (Météo-France, WCS, Token) ==============
+AROME_WCS = os.environ.get("AROME_WCS",
+    "https://public-api.meteofrance.fr/public/arome/1.0/wcs/MF-NWP-HIGHRES-AROME-001-FRANCE-WCS")
+AROME_VAR = os.environ.get("AROME_VAR", "TOTAL_PRECIPITATION__GROUND_OR_WATER_SURFACE")
+
+
+def _mf_get(url, timeout=180):
+    """HTTPS-GET an die Météo-France-API mit apikey-Header (dauerhafter API-Key)."""
+    import urllib.request
+    token = os.environ.get("METEOFRANCE_TOKEN", "")
+    req = urllib.request.Request(url, headers={"apikey": token, "Accept": "*/*"})
+    with urllib.request.urlopen(req, timeout=timeout) as r:
+        return r.read()
+
+
+def _regular_grib_messages(path):
+    """Alle Nachrichten einer regulaeren Lat/Lon-GRIB2-Datei -> Liste (datetime_utc, Feld(DH,DW) auf DST).
+    Gleiche Mechanik wie bei ICON-D2 (Ni/Nj, Eckpunkt, Schrittweite, Scan-Richtung)."""
+    import eccodes as ec
+    out = []
+    f = open(path, "rb")
+    try:
+        while True:
+            gid = ec.codes_grib_new_from_file(f)
+            if gid is None:
+                break
+            try:
+                Ni = ec.codes_get(gid, "Ni"); Nj = ec.codes_get(gid, "Nj")
+                lat0 = ec.codes_get(gid, "latitudeOfFirstGridPointInDegrees")
+                lon0 = ec.codes_get(gid, "longitudeOfFirstGridPointInDegrees")
+                di = ec.codes_get(gid, "iDirectionIncrementInDegrees")
+                dj = ec.codes_get(gid, "jDirectionIncrementInDegrees")
+                js = ec.codes_get(gid, "jScansPositively")
+                vd = ec.codes_get(gid, "validityDate"); vt = ec.codes_get(gid, "validityTime")
+                vals = np.array(ec.codes_get_values(gid), dtype="float32").reshape(Nj, Ni)
+            finally:
+                ec.codes_release(gid)
+            if lon0 > 180:
+                lon0 -= 360.0
+            if js == 1:                                      # Sued zuerst -> nach Nord oben drehen
+                vals = vals[::-1, :]; top = lat0 + (Nj - 1) * dj
+            else:
+                top = lat0
+            src_t = Affine(di, 0, lon0 - di / 2, 0, -dj, top + dj / 2)
+            dst = np.full((DH, DW), np.nan, "float32")
+            reproject(vals, dst, src_transform=src_t, src_crs=CRS.from_epsg(4326),
+                      dst_transform=DST_TRANSFORM, dst_crs=DST_CRS,
+                      resampling=Resampling.bilinear, src_nodata=np.nan, dst_nodata=np.nan)
+            when = dt.datetime.strptime(f"{int(vd):08d}{int(vt):04d}", "%Y%m%d%H%M").replace(tzinfo=dt.timezone.utc)
+            out.append((when, dst))
+    finally:
+        f.close()
+    return out
+
+
+def arome_fields(tmp, max_hours=12, now=None, bbox=(45.5, 48.2, 5.5, 10.6)):
+    """Neueste AROME-0,01°-Niederschlagsvorhersage via Météo-France-WCS -> {datetime: Feld mm/h}.
+    bbox = (latS, latN, lonW, lonE) fuer den Schweizer Ausschnitt.
+
+    HINWEIS: Erster Lauf = Entdeckung. Das exakte WCS-Format (Coverage-IDs, Zeitschluessel,
+    apikey-Header, Einheit) konnte offline nicht getestet werden. Die Funktion druckt daher
+    viel Diagnose und gibt im Zweifel {} zurueck, damit der Build (CH1+D2) nie abbricht."""
+    import re
+    from scipy.ndimage import gaussian_filter
+    if not os.environ.get("METEOFRANCE_TOKEN", ""):
+        print("AROME: METEOFRANCE_TOKEN fehlt -> uebersprungen"); return {}
+    latS, latN, lonW, lonE = bbox
+
+    # 1) GetCapabilities -> Coverage-IDs der Niederschlagsvariable
+    try:
+        cap = _mf_get(f"{AROME_WCS}?SERVICE=WCS&VERSION=2.0.1&REQUEST=GetCapabilities").decode("utf-8", "ignore")
+    except Exception as e:
+        print("AROME GetCapabilities fehlgeschlagen:", e); return {}
+    ids = re.findall(r"CoverageId>\s*([^<\s]+)\s*<", cap)
+    precip = [i for i in ids if AROME_VAR in i]
+    print(f"AROME: {len(ids)} Coverages insgesamt, davon {len(precip)} Niederschlag")
+    if not precip:
+        print("  Beispiel-Coverage-IDs:", ids[:6]); return {}
+
+    # neueste Referenz: Datum aus der ID ziehen (Format ggf. mit : oder .)
+    def _refkey(cid):
+        m = re.search(r"(\d{4}-\d{2}-\d{2}T\d{2}[:.]\d{2}[:.]\d{2})", cid)
+        return m.group(1).replace(".", ":") if m else ""
+    precip.sort(key=_refkey)
+    cov = precip[-1]
+    print("AROME: gewaehlte Coverage:", cov)
+
+    # 2) DescribeCoverage -> verfuegbare Gueltigkeitszeiten
+    try:
+        dc = _mf_get(f"{AROME_WCS}?SERVICE=WCS&VERSION=2.0.1&REQUEST=DescribeCoverage&coverageId={cov}").decode("utf-8", "ignore")
+    except Exception as e:
+        print("AROME DescribeCoverage fehlgeschlagen:", e); return {}
+    times = sorted(set(re.findall(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z", dc)))
+    print(f"AROME: {len(times)} Zeitpunkte im Coverage")
+    if not times:
+        print("  DescribeCoverage-Anfang:", dc[:300]); return {}
+
+    # 3) je Gueltigkeitszeit im Fenster GetCoverage -> GRIB2 -> Raster
+    base = now or dt.datetime.now(dt.timezone.utc)
+    fields = {}; shown = 0
+    for ts in times:
+        when = dt.datetime.strptime(ts, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=dt.timezone.utc)
+        if not (base < when <= base + dt.timedelta(hours=max_hours)):
+            continue
+        gc = (f"{AROME_WCS}?SERVICE=WCS&VERSION=2.0.1&REQUEST=GetCoverage"
+              f"&format=application/wmo-grib&coverageId={cov}"
+              f"&subset=time({ts})&subset=lat({latS},{latN})&subset=long({lonW},{lonE})")
+        try:
+            raw = _mf_get(gc)
+        except Exception as e:
+            if shown < 2:
+                print(f"  AROME GetCoverage {ts} fehlgeschlagen:", e); shown += 1
+            continue
+        if raw[:4] != b"GRIB":
+            if shown < 2:
+                print(f"  AROME-Antwort kein GRIB ({ts}); Anfang:", raw[:160]); shown += 1
+            continue
+        p = os.path.join(tmp, "arome.grib2"); open(p, "wb").write(raw)
+        try:
+            msgs = _regular_grib_messages(p)
+        except Exception as e:
+            if shown < 2:
+                print("  AROME-GRIB nicht lesbar:", e); shown += 1
+            continue
+        for _, grid in msgs:                                 # PT1H = 1-h-Summe ~ mm/h
+            fields[when] = gaussian_filter(np.clip(grid, 0, None), sigma=0.9)
+    if fields:
+        mx = max(float(np.nanmax(g)) for g in fields.values())
+        print(f"AROME: {len(fields)} Felder geladen, max {mx:.1f} mm/h")
+    else:
+        print("AROME: keine Felder geladen")
+    return fields
+
+
 # ===================== NOWCAST (INCA, gerastert, NetCDF) =============
 def _nowcast_src(ds):
     """src_crs und src_transform aus chx/chy + grid_mapping der NetCDF lesen."""
