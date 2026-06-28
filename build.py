@@ -2,15 +2,21 @@
 """
 build.py - erzeugt das statische Radar-Site-Verzeichnis (./site).
 
-Kombiniert:
-  Vergangenheit/jetzt -> offizielles MeteoSchweiz-Radar (ogd-radar-precip)
-  Zukunft             -> MeteoSchweiz-Lokalprognose (ogd-local-forecasting)
+Setzt die Bausteine aus inca_core zu einer Animation zusammen:
+  Vergangenheit/jetzt -> MeteoSchweiz-Radar (5-Min)
+  Zukunft             -> Mittelwert aus ICON-CH1 (MeteoSchweiz) + ICON-D2 (DWD),
+                         pro Bildpunkt gemittelt wo beide liefern, sonst das eine
+                         Modell; CH1 wird auf 15 Min interpoliert und der Uebergang
+                         in der ersten Stunde ans Radar angelehnt.
+  Rueckfall           -> MeteoSchweiz-Lokalprognose (data4web CSV), falls beide
+                         Modelle ausfallen.
 
-  python build.py                         # live von data.geo.admin.ch
-  python build.py --radar x.h5 --fc y.csv # lokale Dateien (Offline-Test)
+Aufruf:
+  python build.py                          # live (braucht offenes Internet)
+  python build.py --radar x.h5 --fc y.csv  # lokale Dateien (Offline-Test)
 
-Ausgabe in ./site/: index.html, frames.json, r*.png (Radar), f*.png (Prognose).
-Quelle: MeteoSchweiz (Open Government Data).
+Ausgabe in ./site/: index.html, frames.json, r*.png (Radar), f*.png (Vorhersage).
+Quellen: MeteoSchweiz (OGD) und Deutscher Wetterdienst (CC BY 4.0).
 """
 import os, sys, glob, json, shutil, tempfile, datetime as dt
 import warnings
@@ -41,11 +47,11 @@ def build(local_radar=None, local_fc=None, local_icon_dir=None):
     # ---- Radar: Vergangenheit -> jetzt ----
     try:
         if local_radar:
-            assets = [(None, local_radar)]
+            assets = [(None, local_radar)]                      # Offline-Test: eine Datei
         else:
-            assets = c.radar_latest_assets(RADAR_FRAMES)
+            assets = c.radar_latest_assets(RADAR_FRAMES)        # die letzten N 5-Min-Bilder
             print(f"Radar-Assets gefunden: {len(assets)}")
-        rendered = []; radar_src = {}
+        rendered = []; radar_src = {}                           # radar_src: Zeit -> Quelldatei
         for i, (dtime, href) in enumerate(assets):
             try:
                 src = href if os.path.exists(str(href)) else c.download(href, os.path.join(tmp, f"r{i}.h5"))
@@ -59,9 +65,10 @@ def build(local_radar=None, local_fc=None, local_icon_dir=None):
             frames.append({"file": fn, "time": when.isoformat(), "kind": "radar", "max_mmh": mx})
         last_radar = None
         if rendered:
-            now = rendered[-1][0]
+            now = rendered[-1][0]                               # "jetzt" = juengstes Radarbild
             try:
-                _, last_radar = c.radar_grid(radar_src[now])     # rohes Feld fuer den Uebergang
+                # rohes Feld des letzten Radarbilds -> dient als Anker fuer den Uebergang
+                _, last_radar = c.radar_grid(radar_src[now])
             except Exception as e:
                 print("  letztes Radarfeld nicht verfuegbar:", e)
             span = f"{rendered[0][0].strftime('%H:%M')}–{rendered[-1][0].strftime('%H:%M')} UTC"
@@ -78,7 +85,8 @@ def build(local_radar=None, local_fc=None, local_icon_dir=None):
         from PIL import Image
         if local_icon_dir:
             raise RuntimeError("lokaler ICON-Test nicht implementiert")
-        ch1, d2 = {}, {}
+        # Beide Modelle unabhaengig holen. Faellt eines aus, bleibt das andere -> Fallback.
+        ch1, d2 = {}, {}      # je {Zeit: Raster mm/h}
         try:
             ch1 = c.icon_ch1_fields(tmp, max_hours=ICON_HOURS, now=now)
         except Exception as e:
@@ -88,50 +96,57 @@ def build(local_radar=None, local_fc=None, local_icon_dir=None):
         except Exception as e:
             import traceback; traceback.print_exc(); print("ICON-D2 fehlgeschlagen:", e)
 
-        # ICON-CH1 zeitlich auf die D2-Schritte interpolieren -> gleichmaessige Vorhersage
+        # ICON-CH1 ist nur stuendlich. Damit jeder 15-Min-Schritt denselben Charakter
+        # hat (kein "Pulsieren"), CH1 linear zwischen den vollen Stunden interpolieren.
         import bisect
         ch1_t = sorted(ch1)
         def ch1_at(t):
             if t in ch1:
-                return ch1[t]
+                return ch1[t]                                   # exakter Stundenwert
             if not ch1_t or t < ch1_t[0] or t > ch1_t[-1]:
-                return None
+                return None                                     # ausserhalb des CH1-Bereichs
             i = bisect.bisect_left(ch1_t, t)
-            t0, t1 = ch1_t[i - 1], ch1_t[i]
+            t0, t1 = ch1_t[i - 1], ch1_t[i]                     # umliegende Stunden
             f = (t - t0).total_seconds() / (t1 - t0).total_seconds()
-            return (1 - f) * ch1[t0] + f * ch1[t1]
+            return (1 - f) * ch1[t0] + f * ch1[t1]             # lineare Interpolation
 
+        # Zeitachse = alle Zeitpunkte beider Modelle, auf das Vorhersagefenster begrenzt
         times = sorted(set(ch1) | set(d2))
         if now is not None:
             cutoff = now + dt.timedelta(hours=ICON_HOURS)
             times = [t for t in times if now < t <= cutoff]
         wet = n = both = anchored = 0; detail = []
         for t in times:
-            a = ch1_at(t); b = d2.get(t)
+            a = ch1_at(t); b = d2.get(t)                        # CH1 (ggf. interpoliert), D2
             parts = [x for x in (a, b) if x is not None]
             if not parts:
                 continue
-            interp = "i" if (a is not None and t not in ch1) else ""
-            if len(parts) > 1:                                  # beide -> Mittelwert je Pixel
+            interp = "i" if (a is not None and t not in ch1) else ""   # i = interpolierter CH1-Wert
+            # Kernregel: beide vorhanden -> Mittelwert je Pixel (nanmean mittelt nur,
+            # wo beide einen Wert haben; sonst bleibt der vorhandene Wert stehen).
+            if len(parts) > 1:
                 both += 1
                 with np.errstate(all="ignore"):
                     field = np.nanmean(np.stack(parts), axis=0)
-            else:                                               # nur eines -> Fallback
+            else:                                               # nur ein Modell -> dieses
                 field = parts[0]
-            # Uebergang: in den ersten BLEND_MIN Minuten ans Radar anlehnen (weiche Naht)
+            # Uebergang glaetten: in den ersten BLEND_MIN Minuten zum letzten Radarbild
+            # hin ueberblenden (Gewicht w faellt linear von 1 auf 0), nur wo beide Daten haben.
             if last_radar is not None and now is not None:
                 lead_min = (t - now).total_seconds() / 60.0
                 if 0 < lead_min < BLEND_MIN:
-                    w = 1.0 - lead_min / BLEND_MIN              # 1 -> 0 ueber die erste Stunde
+                    w = 1.0 - lead_min / BLEND_MIN
                     overlap = np.isfinite(last_radar) & np.isfinite(field)
                     field = np.where(overlap, w * last_radar + (1 - w) * field, field)
                     anchored += 1
+            # einfaerben, als PNG speichern, Frame vermerken
             fn = f"f{n:02d}.png"
             Image.fromarray(c.colorize(field), "RGBA").save(os.path.join(OUT, fn))
             mxv = np.nanmax(field)
-            mx = round(float(mxv), 1) if np.isfinite(mxv) else 0.0
+            mx = round(float(mxv), 1) if np.isfinite(mxv) else 0.0   # fuer den "trocken"-Hinweis
             if mx > 0:
                 wet += 1
+            # Diagnose-Etikett: welche Quelle(n) das Bild gespeist haben
             tag = ("CH1" + interp + "+D2") if (a is not None and b is not None) else (("CH1" + interp) if a is not None else "D2")
             lead = round((t - now).total_seconds() / 3600, 2) if now else 0
             detail.append(f"+{lead}h[{tag}]:{mx}")

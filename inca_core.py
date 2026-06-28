@@ -2,36 +2,50 @@
 """
 inca_core.py - Kernlogik fuer das kombinierte Niederschlagsradar.
 
-Vergangenheit/Gegenwart: offizielles MeteoSchweiz-Radar (ODIM-HDF5, RZC, mm/h)
-Zukunft:                 MeteoSchweiz-Lokalprognose (data4web CSV, interpoliert)
-Beide werden auf dasselbe WGS84-Raster gerendert und mit derselben Radar-Farbskala
-eingefaerbt, damit der Uebergang nahtlos ist.
+Liefert die Bausteine, die build.py zusammensetzt. Alle Felder werden auf ein
+gemeinsames WGS84-Raster (siehe DST_*) umprojiziert und mit derselben
+Radar-Farbskala (SCALE) eingefaerbt, damit Messung und Vorhersage nahtlos
+ineinander uebergehen.
 
-Quelle der Daten: MeteoSchweiz (Open Government Data, frei mit Quellenangabe).
+Datenquellen:
+  - Vergangenheit/jetzt : MeteoSchweiz-Radar (ODIM-HDF5, RZC, mm/h)   -> radar_grid / render_radar
+  - Zukunft (1 km, stdl.): MeteoSchweiz ICON-CH1 (GRIB2, STAC)        -> icon_ch1_fields
+  - Zukunft (2 km,15 Min): DWD ICON-D2 (GRIB2, Open Data)             -> icond2_fields
+  - Rueckfall            : MeteoSchweiz-Lokalprognose (data4web CSV)  -> render_forecast
+  - (ungenutzt, bereit)  : INCA-Nowcasting (NetCDF)                   -> render_nowcast
+
+Den eigentlichen Mehrmodell-Zusammenzug (Mittelwert/Fallback) macht build.py;
+hier werden nur die einzelnen Modelle zu Feldern {Zeit: Raster mm/h} aufbereitet.
+
+Quellen: MeteoSchweiz (OGD) und Deutscher Wetterdienst (CC BY 4.0).
 """
 import os, json, csv, glob, datetime as dt
 import numpy as np
-import h5py
+import h5py                                   # ODIM-HDF5 (Radar)
 import rasterio
 from rasterio.transform import Affine
-from rasterio.warp import reproject, Resampling
+from rasterio.warp import reproject, Resampling   # Umprojektion auf das Zielraster
 from rasterio.crs import CRS
 from PIL import Image
 from pyproj import Transformer
-from scipy.interpolate import griddata
+from scipy.interpolate import griddata        # nur fuer den data4web-Rueckfall
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 
-# ---- gemeinsames Zielraster (WGS84), deckt die Radardomaene ab -------
-DST_W, DST_E, DST_S, DST_N = 2.6, 12.5, 43.6, 49.5
-DST_RES = 0.01
-DW = int(round((DST_E - DST_W) / DST_RES))
-DH = int(round((DST_N - DST_S) / DST_RES))
-DST_TRANSFORM = Affine(DST_RES, 0, DST_W, 0, -DST_RES, DST_N)
+# ---- gemeinsames Zielraster (WGS84/EPSG:4326), deckt die Radardomaene ab -----
+# Alle Quellen werden hierauf umprojiziert, damit sie deckungsgleich sind.
+DST_W, DST_E, DST_S, DST_N = 2.6, 12.5, 43.6, 49.5      # West, Ost, Sued, Nord (Grad)
+DST_RES = 0.01                                          # Rastermaschung ~1,1 km
+DW = int(round((DST_E - DST_W) / DST_RES))             # Breite in Pixeln
+DH = int(round((DST_N - DST_S) / DST_RES))             # Hoehe in Pixeln
+DST_TRANSFORM = Affine(DST_RES, 0, DST_W, 0, -DST_RES, DST_N)   # Pixel->Koordinate (Zeile 0 = Nord)
 DST_CRS = CRS.from_epsg(4326)
-BOUNDS = [[DST_S, DST_W], [DST_N, DST_E]]
+BOUNDS = [[DST_S, DST_W], [DST_N, DST_E]]              # fuer Leaflet (imageOverlay)
 
-# ---- Radar-Farbskala mm/h -> RGBA (blau leicht ... rot/magenta Gewitter) ----
+# ---- Radar-Farbskala: mm/h -> RGBA --------------------------------------------
+# Diskrete Stufen wie beim klassischen Radar (hellblau = leicht ... magenta = Gewitter).
+# MUSS mit SCALE_JS in index.html uebereinstimmen (Punkt-Mengenanzeige).
+# Schwelle = obere Grenze der Stufe; (R, G, B, Alpha).
 SCALE = [
     (0.05, (165, 215, 255, 150)),
     (0.3,  (110, 175, 248, 170)),
@@ -46,11 +60,13 @@ SCALE = [
 
 
 def colorize(arr):
+    """2D-Feld (mm/h, NaN = keine Daten) -> RGBA-Bild nach SCALE.
+    Werte <= 0 und NaN bleiben transparent (Alpha 0)."""
     h, w = arr.shape
-    rgba = np.zeros((h, w, 4), dtype=np.uint8)
-    a = np.nan_to_num(arr, nan=0.0)
+    rgba = np.zeros((h, w, 4), dtype=np.uint8)         # Start: alles transparent
+    a = np.nan_to_num(arr, nan=0.0)                    # NaN -> 0 (faellt in keine Stufe)
     prev = 0.0
-    for thr, col in SCALE:
+    for thr, col in SCALE:                             # jede Stufe (prev, thr] einfaerben
         rgba[(a > prev) & (a <= thr)] = col
         prev = thr
     return rgba
@@ -65,34 +81,38 @@ def radar_grid(h5path):
         where = dict(f["where"].attrs)
         what = dict(f["what"].attrs)
 
+    # Rohwerte -> physikalische Werte (mm/h); Sonderfaelle behandeln:
     gain = float(w.get("gain", 1.0)); offset = float(w.get("offset", 0.0))
     nodata = float(w.get("nodata", np.nan)); undetect = float(w.get("undetect", np.inf))
     vals = data * gain + offset
     if not np.isnan(nodata):
-        vals[data == nodata] = np.nan
+        vals[data == nodata] = np.nan        # kein Messwert -> transparent
     vals[np.isnan(data)] = np.nan
     if not np.isinf(undetect):
-        vals[data == undetect] = 0.0
+        vals[data == undetect] = 0.0         # gemessen, aber kein Niederschlag -> 0
     else:
         vals[np.isinf(data)] = 0.0
 
+    # Quell-Projektion (LV95/somerc) und Eckkoordinaten aus der Datei lesen ...
     proj = where["projdef"].decode() if isinstance(where["projdef"], bytes) else where["projdef"]
     src_crs = CRS.from_proj4(proj)
     nx = int(where.get("xsize", data.shape[1])); ny = int(where.get("ysize", data.shape[0]))
-    # LV95-Ecken aus den geografischen Eckpunkten bestimmen
+    # ... die Ecken stehen geografisch drin -> in LV95-Meter umrechnen fuer das Affine
     t = Transformer.from_crs(4326, src_crs, always_xy=True)
-    ul_e, ul_n = t.transform(float(where["UL_lon"]), float(where["UL_lat"]))
-    lr_e, lr_n = t.transform(float(where["LR_lon"]), float(where["LR_lat"]))
+    ul_e, ul_n = t.transform(float(where["UL_lon"]), float(where["UL_lat"]))   # oben links
+    lr_e, lr_n = t.transform(float(where["LR_lon"]), float(where["LR_lat"]))   # unten rechts
     dx = (lr_e - ul_e) / nx
     dy = (ul_n - lr_n) / ny
     src_transform = Affine(dx, 0, ul_e, 0, -dy, ul_n)   # ODIM: Zeile 0 = Nord
 
+    # auf das gemeinsame WGS84-Raster umprojizieren
     dst = np.full((DH, DW), np.nan, dtype="float32")
     reproject(source=vals.astype("float32"), destination=dst,
               src_transform=src_transform, src_crs=src_crs,
               dst_transform=DST_TRANSFORM, dst_crs=DST_CRS,
               resampling=Resampling.bilinear, src_nodata=np.nan, dst_nodata=np.nan)
 
+    # Zeitstempel (UTC) aus den Metadaten
     d = (what.get("date") or where.get("date"))
     tm = (what.get("time"))
     d = d.decode() if isinstance(d, bytes) else d
@@ -272,21 +292,26 @@ def icon_ch1_fields(tmp, max_hours=30, now=None):
     global _ICON_IDX, _ICON_MASK
     from scipy.spatial import cKDTree
     from scipy.ndimage import gaussian_filter
+    # 1) Gitter-Geometrie aus der (statischen) Konstanten-Datei: lon/lat je Zelle
     chref = _icon_constants_href()
     cfile = download(chref, os.path.join(tmp, "icon_const.grib2"))
     lon, lat = _icon_lonlat(cfile)
     print(f"ICON-CH1-Gitter: {len(lon)} Zellen, lon {lon.min():.2f}..{lon.max():.2f}, lat {lat.min():.2f}..{lat.max():.2f}")
 
+    # STAC-Suche nach den TOT_PREC-Assets (deterministischer Lauf)
     def _search(extra):
         body = {"collections": [ICON_COLLECTION], "forecast:variable": "TOT_PREC",
                 "forecast:perturbed": False, "limit": 100}
         body.update(extra)
         return _post_json(f"{STAC}/search", body).get("features", [])
 
+    # 2) Neuesten verfuegbaren Lauf finden. Die API unterstuetzt weder "latest"
+    #    noch Sortierung, daher die Lauf-Zeitpunkte im 3-Stunden-Raster rueckwaerts
+    #    durchprobieren (15:00, 12:00, ...) und den ersten veroeffentlichten nehmen.
     feats, chosen = [], None
     base = (now or dt.datetime.now(dt.timezone.utc)).replace(minute=0, second=0, microsecond=0)
     base = base - dt.timedelta(hours=base.hour % 3)
-    for k in range(0, 13):
+    for k in range(0, 13):                                  # bis ~36 h zurueck
         ref = base - dt.timedelta(hours=3 * k)
         refiso = ref.strftime("%Y-%m-%dT%H:%M:%SZ")
         try:
@@ -297,23 +322,26 @@ def icon_ch1_fields(tmp, max_hours=30, now=None):
             feats, chosen = fs, refiso
             break
     if not feats:
-        feats = _search({})
+        feats = _search({})                                # Notnagel
+    # 3) (Referenz, Vorlaufzeit, GRIB-URL) je Asset sammeln
     recs = []
     for ft in feats:
         p = ft.get("properties", {})
         ref = p.get("forecast:reference_datetime") or p.get("datetime")
-        hz = _iso_dur_hours(p.get("forecast:horizon", ""))
+        hz = _iso_dur_hours(p.get("forecast:horizon", ""))     # ISO-Dauer -> Stunden
         href = next((a.get("href") for a in ft.get("assets", {}).values()
                      if ".grib2" in str(a.get("href", "")).lower()), None)
         if ref and hz is not None and href:
             recs.append((ref, hz, href))
     if not recs:
         raise RuntimeError(f"Keine ICON-CH1-TOT_PREC-Assets gefunden (Features: {len(feats)})")
-    latest = max(r[0] for r in recs)
+    latest = max(r[0] for r in recs)                       # nur den neuesten Lauf nehmen
     series = sorted((hz, href) for ref, hz, href in recs if ref == latest)
     ref_dt = dt.datetime.fromisoformat(latest.replace("Z", "+00:00"))
     print(f"ICON-CH1-Referenz: {latest}  Vorlaufzeiten: {len(series)}")
 
+    # 4) Zuordnung Dreiecksgitter-Zelle -> Zielpixel (einmalig, dann zwischengespeichert).
+    #    Fuer jedes Zielpixel die naechste ICON-Zelle suchen (Nearest-Neighbor via KDTree).
     if _ICON_IDX is None:
         gx = DST_W + (np.arange(DW) + 0.5) * DST_RES
         gy = DST_N - (np.arange(DH) + 0.5) * DST_RES
@@ -321,20 +349,22 @@ def icon_ch1_fields(tmp, max_hours=30, now=None):
         tree = cKDTree(np.column_stack([lon, lat]))
         dist, idx = tree.query(np.column_stack([GX.ravel(), GY.ravel()]), k=1)
         _ICON_IDX = idx
-        _ICON_MASK = dist > 0.02
+        _ICON_MASK = dist > 0.02                           # weiter als ~2 km -> ausserhalb der Domaene
 
+    # 5) Pro Vorlaufzeit: TOT_PREC ist aufsummiert -> entkumulieren (Differenz),
+    #    auf das Raster legen, glaetten, ausserhalb maskieren.
     fields = {}; prev = None
     for hz, href in series:
         if hz > max_hours:
             break
         cur = _icon_values(download(href, os.path.join(tmp, f"icon_{int(hz):03d}.grib2")))
-        precip = cur - prev if prev is not None else cur.copy()
+        precip = cur - prev if prev is not None else cur.copy()    # mm in dieser Stunde = mm/h
         prev = cur
         if hz <= 0:
-            continue
-        precip = np.clip(precip, 0, None)
+            continue                                       # +0 h ist nur die Nulllinie
+        precip = np.clip(precip, 0, None)                  # numerisches Rauschen abschneiden
         field = precip[_ICON_IDX].astype("float32").reshape(DH, DW)
-        field = gaussian_filter(field, sigma=1.1)
+        field = gaussian_filter(field, sigma=1.1)          # weiche Verlaeufe (App-Look)
         field = field.reshape(-1); field[_ICON_MASK] = np.nan
         fields[ref_dt + dt.timedelta(hours=hz)] = field.reshape(DH, DW)
     return fields
@@ -355,6 +385,9 @@ def icond2_fields(tmp, max_hours=12, now=None):
     Entkumuliert und auf mm/h umgerechnet; ausserhalb der Domaene NaN."""
     import bz2, re, eccodes as ec
     from scipy.ndimage import gaussian_filter
+    # 1) Neuesten veroeffentlichten DWD-Lauf finden. Die Lauf-Verzeichnisse heissen
+    #    nur nach der Stunde (00,03,...,21); das Datum steht im Dateinamen. Daher die
+    #    3-Stunden-Laeufe rueckwaerts durchgehen und das Verzeichnis-Listing pruefen.
     base = (now or dt.datetime.now(dt.timezone.utc)).replace(minute=0, second=0, microsecond=0)
     base = base - dt.timedelta(hours=base.hour % 3)
     chosen, files = None, []
@@ -363,23 +396,26 @@ def icond2_fields(tmp, max_hours=12, now=None):
         url = f"{DWD_ICOND2_BASE}/{run:%H}/tot_prec/"
         datestr = run.strftime("%Y%m%d%H")
         try:
-            html = _http(url).decode("utf-8", "ignore")
+            html = _http(url).decode("utf-8", "ignore")     # Verzeichnis-Listing (HTML)
         except Exception:
             continue
         names = re.findall(r'href="([^"]+)"', html)
+        # regulaeres Lat/Lon-Gitter (einfacher als das Dreiecksgitter), tot_prec, dieser Lauf
         sel = [n for n in names if "regular-lat-lon" in n and "tot_prec" in n
                and n.endswith(".bz2") and datestr in n]
         if sel:
             chosen, files = run, sorted(set(sel)); break
     if not files:
         raise RuntimeError("Keine ICON-D2 tot_prec-Dateien (regular-lat-lon) gefunden")
-    # Vorlaufstunde aus Dateiname (_NNN_) -> nur bis max_hours laden
+    # Vorlaufstunde aus dem Dateinamen (_NNN_) -> nur bis max_hours laden (Bandbreite)
     def _hh(n):
         m = re.search(r"_(\d{3})_2d_tot_prec", n)
         return int(m.group(1)) if m else 999
     files = [n for n in files if _hh(n) <= max_hours]
     print(f"ICON-D2-Lauf: {chosen:%Y-%m-%dT%H:%M}Z  Dateien: {len(files)} (bis +{max_hours}h)")
 
+    # 2) Jede Datei herunterladen, bz2-entpacken, alle GRIB-Nachrichten lesen.
+    #    Eine stuendliche Datei enthaelt 4 Nachrichten (volle Stunde + :15/:30/:45).
     raw = []          # (validtime, akkumuliertes Feld auf DST)
     for n in files:
         full = n if n.startswith("http") else (f"{DWD_ICOND2_BASE}/{chosen:%H}/tot_prec/" + n.split("/")[-1])
@@ -393,21 +429,23 @@ def icond2_fields(tmp, max_hours=12, now=None):
             gid = ec.codes_grib_new_from_file(f)
             if gid is None:
                 break
-            Ni = ec.codes_get(gid, "Ni"); Nj = ec.codes_get(gid, "Nj")
+            # Gitter-Geometrie aus den GRIB-Schluesseln (regulaeres Lat/Lon)
+            Ni = ec.codes_get(gid, "Ni"); Nj = ec.codes_get(gid, "Nj")          # Spalten/Zeilen
             lat0 = ec.codes_get(gid, "latitudeOfFirstGridPointInDegrees")
             lon0 = ec.codes_get(gid, "longitudeOfFirstGridPointInDegrees")
-            di = ec.codes_get(gid, "iDirectionIncrementInDegrees")
-            dj = ec.codes_get(gid, "jDirectionIncrementInDegrees")
-            js = ec.codes_get(gid, "jScansPositively")
+            di = ec.codes_get(gid, "iDirectionIncrementInDegrees")              # Schrittweite Laenge
+            dj = ec.codes_get(gid, "jDirectionIncrementInDegrees")              # Schrittweite Breite
+            js = ec.codes_get(gid, "jScansPositively")                          # Scan-Richtung Nord/Sued
             vd = ec.codes_get(gid, "validityDate"); vt = ec.codes_get(gid, "validityTime")
             vals = np.array(ec.codes_get_values(gid), dtype="float32").reshape(Nj, Ni)
             ec.codes_release(gid)
-            if lon0 > 180:
+            if lon0 > 180:                                   # 0..360 -> -180..180
                 lon0 -= 360.0
-            if js == 1:                                     # Sued zuerst -> nach Nord oben drehen
+            if js == 1:                                      # Sued zuerst -> nach Nord oben drehen
                 vals = vals[::-1, :]; top = lat0 + (Nj - 1) * dj
             else:
                 top = lat0
+            # Affine fuer das Quellraster (Zeile 0 = Nord) und auf DST umprojizieren
             src_t = Affine(di, 0, lon0 - di / 2, 0, -dj, top + dj / 2)
             dst = np.full((DH, DW), np.nan, "float32")
             reproject(vals, dst, src_transform=src_t, src_crs=CRS.from_epsg(4326),
@@ -419,13 +457,14 @@ def icond2_fields(tmp, max_hours=12, now=None):
     raw.sort(key=lambda x: x[0])
     if not raw:
         raise RuntimeError("ICON-D2: keine GRIB-Nachrichten gelesen")
-    # Entkumulieren -> mm/h
+    # 3) TOT_PREC ist aufsummiert -> Differenz aufeinanderfolgender Zeitschritte,
+    #    geteilt durch den Abstand in Stunden = Rate in mm/h (15 Min -> x4).
     fields = {}; prev = None; prevt = None
     for when, acc in raw:
         if prev is not None:
             dthr = max((when - prevt).total_seconds() / 3600.0, 1e-6)
             rate = np.clip(acc - prev, 0, None) / dthr
-            fields[when] = gaussian_filter(rate, sigma=0.8)
+            fields[when] = gaussian_filter(rate, sigma=0.8)   # leicht glaetten
         prev, prevt = acc, when
     print(f"ICON-D2: {len(fields)} Felder (15-Min)")
     return fields

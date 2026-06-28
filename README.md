@@ -1,89 +1,211 @@
-# Swiss Precipitation Radar (INCA)
+# Niederschlagsradar Schweiz
 
-An animated precipitation radar for Switzerland, showing **now and the next 6 hours**
-in 5-minute steps. It uses the official **INCA nowcasting data from MeteoSwiss**
-(open government data).
+Animiertes Niederschlagsradar im Stil der MeteoSchweiz-/LANDI-Karte, das
+**Messung (Vergangenheit)** und **Vorhersage (Zukunft)** nahtlos auf einer
+einzigen Karte zeigt. Die Seite ist eine rein statische Website, die alle
+~10 Minuten von einem GitHub-Actions-Workflow neu erzeugt und per FTP
+veröffentlicht wird.
 
-The conversion runs automatically in the cloud (GitHub Actions): every ~10 minutes it
-fetches the latest INCA run, turns it into coloured, georeferenced images, and uploads
-the result to a static web host over FTP. The host only serves static files — no
-server-side code, no admin rights, and your own computer never has to be running.
+**Live:** https://eigermaker.ch/radar/
 
-**Data source: MeteoSwiss** (Open Government Data — free to reuse with attribution).
+---
 
-## How it works
+## Funktionsweise
 
-1. `build.py` downloads the latest INCA precipitation file (`RP`/`RR`, mm/h) from the
-   MeteoSwiss STAC API at `data.geo.admin.ch`.
-2. `inca_core.py` decodes the NetCDF-4/HDF5 grid, reprojects it from the Swiss
-   coordinate system to WGS84, and renders one transparent PNG overlay per 5-minute
-   step (0 h … +6 h), plus a small `frames.json` manifest.
-3. The output folder `site/` (HTML viewer + `frames.json` + PNGs) is published via FTP.
-4. `index.html` is a Leaflet map that animates the overlays, with a play/scrub
-   timeline, intensity legend, and Swiss city labels.
+Die Animation besteht aus zwei aneinandergehängten Teilen, beide auf demselben
+WGS84-Raster und mit derselben Radar-Farbskala:
 
-Everything in `site/` is static, so any plain web host can serve it.
+| Zeitbereich | Quelle | Auflösung | Format |
+|-------------|--------|-----------|--------|
+| **Vergangenheit → jetzt** | MeteoSchweiz-Radar `ch.meteoschweiz.ogd-radar-precip` (RZC) | 1 km, **5 Min** | ODIM-HDF5 |
+| **Zukunft (Nahbereich)** | **Mittelwert** aus ICON-CH1 + ICON-D2 | 1–2 km, **15 Min** | GRIB2 |
+| **Zukunft (späterer Verlauf)** | ICON-CH1 allein | 1 km, stündlich | GRIB2 |
+| **Notfall-Rückfall** | MeteoSchweiz-Lokalprognose `ch.meteoschweiz.ogd-local-forecasting` | Punktraster | CSV |
 
-## Repository contents
+### Vorhersage = selbst gerechneter Mehrmodell-Zusammenzug
 
-- `index.html` — the radar viewer (front-end)
-- `build.py` — fetches INCA and builds the `site/` folder
-- `inca_core.py` — NetCDF → PNG conversion and STAC lookup
-- `requirements.txt` — Python dependencies (used by CI, not by the web host)
-- `.github/workflows/inca.yml` — the scheduled build + FTP deploy
-- `RP_INCA_*.nc` — a sample INCA file for local testing (optional)
+Die Zukunft wird aus zwei frei verfügbaren Modellen kombiniert (analog zu dem,
+was Open-Meteo intern tut, hier aber selbst gerechnet):
 
-## Setup
+- **ICON-CH1** — MeteoSchweiz, 1 km, stündlich, bis +33 h. Höchste räumliche
+  Auflösung, die für die ganze Schweiz offen verfügbar ist.
+- **ICON-D2** — Deutscher Wetterdienst (DWD), 2,2 km, **15-minütig**, bis +12 h
+  (konfigurierbar). Bringt die feine Zeitauflösung.
 
-1. **Create a public repository** and add the files above (the workflow goes to
-   `.github/workflows/inca.yml`). A public repo gives unlimited free Actions minutes;
-   credentials live in encrypted secrets, not in the code.
+**Kombinationsregel (pro Zeitpunkt und pro Bildpunkt):**
 
-2. **Add repository secrets** (Settings → Secrets and variables → Actions):
-   - `FTP_SERVER` — your host's FTP address
-   - `FTP_USERNAME` — FTP user
-   - `FTP_PASSWORD` — FTP password
-   - `FTP_SERVER_DIR` — target folder on the host, **with a trailing slash**
-     (e.g. `/httpdocs/radar/`)
-   - `INCA_COLLECTION` — *optional*, the exact STAC collection id, only needed if
-     auto-discovery fails
+1. Liefern **beide** Modelle einen Wert → **Mittelwert**.
+2. Liefert nur **eines** einen Wert → genau **dieses** (Fallback).
+3. Liefert **keines** → transparent.
 
-3. **Run it once** from the Actions tab (`Run workflow`), then open your site at the
-   folder you deployed to (e.g. `https://example.com/radar/`). After that it updates
-   on its own.
+Fällt eine ganze Quelle aus (z. B. DWD nicht erreichbar), läuft die Vorhersage
+automatisch nur mit dem anderen Modell weiter; fallen beide aus, greift die
+data4web-Lokalprognose als letzter Rückfall.
 
-## Local test (optional)
+Zwei Glättungen sorgen für einen ruhigen Verlauf:
 
-```bash
-python -m venv venv && source venv/bin/activate
-pip install -r requirements.txt
-python build.py --file RP_INCA_202106280700.nc   # uses the bundled sample
-cd site && python -m http.server 8000            # http://127.0.0.1:8000
+- **CH1 auf 15 Minuten interpoliert** — damit jeder Schritt denselben Charakter
+  hat und kein stündliches „Pulsieren" entsteht.
+- **Radar-Verankerung am Übergang** — in der ersten Stunde wird die Vorhersage
+  zum letzten gemessenen Radarbild hin überblendet (Standard 60 Min, per
+  `BLEND_MIN` einstellbar), damit die Naht zwischen Messung und Modell nicht
+  springt.
+
+---
+
+## Datenfluss
+
+```
+GitHub Actions (Cron ~alle 10 Min)
+        │
+        ▼
+   python build.py
+        │  ├─ Radar:   data.geo.admin.ch  (STAC → ODIM-HDF5)
+        │  ├─ ICON-CH1: data.geo.admin.ch (STAC → GRIB2)
+        │  └─ ICON-D2:  opendata.dwd.de    (GRIB2 .bz2)
+        ▼
+   ./site/  (index.html, frames.json, r*.png, f*.png)
+        │
+        ▼  FTP-Deploy (SamKirkland/FTP-Deploy-Action)
+        ▼
+   METAhost  →  https://eigermaker.ch/radar/
 ```
 
-## Configuration (environment variables)
+Wichtig: Der **GitHub-Actions-Runner** hat vollen Internetzugang und erreicht
+`data.geo.admin.ch` und `opendata.dwd.de`. Der Build läuft also nur dort live —
+lokal lassen sich die Renderer mit Beispieldateien testen (siehe unten).
 
-- `INCA_STEP_MIN` — output time step in minutes (default `5`)
-- `INCA_COLLECTION` — pin the STAC collection id (otherwise auto-discovered)
-- `INCA_SITE` — output directory (default `site`)
+---
 
-## Notes
+## Projektdateien
 
-- **Schedule is best-effort.** GitHub runs scheduled jobs "as soon as possible";
-  the 10-minute interval can stretch to 15–20 minutes and a run is occasionally
-  skipped. Fine for a personal radar.
-- **The STAC collection** for INCA may need pinning via `INCA_COLLECTION`. List all
-  collections at `https://data.geo.admin.ch/api/stac/v1/collections` and search for
-  "inca" / "nowcasting".
-- **FTP vs FTPS.** The workflow uses `protocol: ftps`; switch to `ftp` in
-  `inca.yml` if your host needs plain FTP.
-- **`rasterio`** (with GDAL) is the heaviest dependency; it installs cleanly on the
-  GitHub Ubuntu runners.
+| Datei | Zweck |
+|-------|-------|
+| `build.py` | Orchestriert den Lauf: Radar + Vorhersage kombinieren, PNGs und `frames.json` erzeugen, `index.html` kopieren. |
+| `inca_core.py` | Kernlogik: Datenabruf (STAC/DWD), Dekodierung (HDF5/GRIB2), Umprojektion auf das gemeinsame Raster, Farbskala. |
+| `index.html` | Der Viewer (Leaflet): Animation, Bedienung, Punkt-Abfrage, Standort, Cache-Busting. |
+| `requirements.txt` | Python-Abhängigkeiten. |
+| `Data4Web_Legend_PLZ.csv` | PLZ→Koordinaten für den data4web-Rückfall. |
+| `.github/workflows/inca.yml` | Workflow: Build + FTP-Deploy. |
 
-## Attribution & licence
+Erzeugte Ausgaben (nicht eingecheckt, liegen in `./site/`):
+`index.html`, `frames.json`, `r00.png…` (Radar), `f00.png…` (Vorhersage).
 
-Precipitation data © **MeteoSwiss**, provided as Open Government Data and free to
-reuse provided the source is credited ("Source: MeteoSwiss"). Base map tiles ©
-OpenStreetMap contributors, © CARTO. The attribution is shown on the map.
+---
 
-This is an independent project and is **not affiliated with or endorsed by MeteoSwiss**.
+## Farbskala (mm/h)
+
+Diskrete Stufen wie beim klassischen Radar, von leichtem Niederschlag (hellblau)
+bis Gewitter (rot/magenta):
+
+`0,05 · 0,3 · 1 · 2 · 5 · 10 · 20 · 50 · >50`  mm/h
+
+Definiert in `inca_core.py` (`SCALE`) und gespiegelt im Viewer (`SCALE_JS`) —
+**beide müssen übereinstimmen**, sonst stimmt die Mengenanzeige am angetippten
+Punkt nicht.
+
+---
+
+## Viewer-Funktionen
+
+- Abspielen / Pause / Bild-für-Bild, Geschwindigkeit (langsam/normal/schnell)
+- Start 30 Minuten vor „jetzt", „Jetzt"-Trenner in der Zeitleiste
+- Hell-/Dunkel-Modus, Städtebeschriftung, Legende
+- **Punkt-Abfrage:** Karte antippen → Niederschlagsmenge an diesem Ort für die
+  gewählte Zeit (aus der Pixelfarbe ausgelesen)
+- **„kein Niederschlag"-Hinweis** auf trockenen Bildern
+- **Standort-Knopf** (⌖): zentriert per Geolocation auf den eigenen Standort
+- **Refresh-Knopf** (⟳): erzwingt einen Hard-Reload (umgeht den Browser-Cache)
+- Weiche Überblendung zwischen den Bildern
+
+### Cache-Busting
+
+Die Bilddateien heißen bei jedem Build gleich (`r00.png`, `f00.png` …). Damit
+mobile Browser nicht alte Bilder aus dem Cache zeigen, hängt der Viewer an jede
+Bild-URL ein Versions-Kürzel `?v=<Build-Zeit>` (Feld `v` in `frames.json`). Die
+Seite frischt sich dadurch beim automatischen 5-Minuten-Update von selbst auf;
+der ⟳-Knopf erzwingt zusätzlich einen vollständigen Hard-Reload.
+
+---
+
+## Deployment (GitHub Actions + FTP)
+
+Der Workflow `.github/workflows/inca.yml` installiert die Abhängigkeiten, führt
+`python build.py` aus und lädt `./site/` per FTP hoch. Benötigte
+**Repository-Secrets** (Settings → Secrets and variables → Actions):
+
+| Secret | Bedeutung |
+|--------|-----------|
+| `FTP_SERVER` | FTP-Host (z. B. `3db.ch`) |
+| `FTP_USERNAME` | FTP-Benutzer |
+| `FTP_PASSWORD` | FTP-Passwort |
+| `FTP_SERVER_DIR` | Zielverzeichnis (z. B. `/eigermaker.ch/radar/`) |
+
+Manuell auslösen: Tab **Actions** → Workflow → **Run workflow**.
+
+---
+
+## Konfiguration (Umgebungsvariablen)
+
+Alle optional, mit sinnvollen Standardwerten:
+
+| Variable | Standard | Wirkung |
+|----------|----------|---------|
+| `RADAR_FRAMES` | `24` | Anzahl Radarbilder (~2 h bei 5-Min-Takt) |
+| `ICON_HOURS` | `30` | ICON-CH1 bis +X h (max. 33) |
+| `ICOND2_HOURS` | `12` | ICON-D2 (15-Min) bis +X h |
+| `BLEND_MIN` | `60` | Dauer der Radar-Verankerung der Vorhersage (Min) |
+| `FC_HOURS` | `24` | Stunden für den data4web-Rückfall |
+| `INCA_SITE` | `site` | Ausgabeverzeichnis |
+| `ICON_COLLECTION` | `ch.meteoschweiz.ogd-forecasting-icon-ch1` | ICON-CH1-STAC-Collection |
+| `DWD_ICOND2_BASE` | `https://opendata.dwd.de/weather/nwp/icon-d2/grib` | DWD-Basis-URL |
+| `INCA_STAC` | `https://data.geo.admin.ch/api/stac/v1` | STAC-API |
+
+---
+
+## Lokaler Test / Offline
+
+Der Live-Abruf braucht offenes Internet (am besten im Actions-Runner). Lokal
+lassen sich die Renderer mit Beispieldateien prüfen:
+
+```bash
+pip install -r requirements.txt
+python build.py --radar beispiel.h5 --fc beispiel.csv
+# Ergebnis in ./site/  (index.html im Browser öffnen)
+```
+
+`eccodes` benötigt die ecCodes-Bibliothek (über das Pip-Paket meist enthalten;
+unter Debian/Ubuntu sonst `apt install libeccodes0`).
+
+---
+
+## Datenquellen & Lizenzen
+
+- **MeteoSchweiz** — Radar und ICON-CH1, Open Government Data, frei mit
+  Quellenangabe „Quelle: MeteoSchweiz".
+- **Deutscher Wetterdienst (DWD)** — ICON-D2, Open Data, **CC BY 4.0**,
+  Quellenangabe „Quelle: Deutscher Wetterdienst".
+- Kartenhintergrund: © OpenStreetMap-Mitwirkende, © CARTO.
+
+Die Quellenangaben sind im Viewer (Kartenattribution und Untertitel) hinterlegt.
+
+---
+
+## Grenzen & Ausblick
+
+- **Räumlich** ist 1 km (ICON-CH1) das offene Maximum für die ganze Schweiz —
+  feiner geht es derzeit frei nicht.
+- **5-Minuten-Vorhersage** wäre nur durch zeitliche Interpolation der 15-Min-
+  Schritte möglich (kosmetisch, keine echten Zusatzdaten). Echte 5-Min-Felder
+  liefert nur radar-/beobachtungsbasiertes Nowcasting.
+- **MeteoSchweiz-INCA-Nowcasting** (1 km / 5 Min, beobachtungsgestützt) wäre der
+  große Sprung in beiden Dimensionen — als offene Daten aber noch nicht
+  verfügbar (frühestens ~2026). Sobald freigegeben: idealer Ersatz für den
+  Nahbereich.
+- **Météo-France AROME** (1,3 km, 15 Min) könnte den Westen schärfen — deckt
+  aber nur die Westschweiz ab (Stufe 2).
+
+---
+
+*Privates Hobbyprojekt. Keine amtliche Wetterwarnung — im Ernstfall gelten die
+offiziellen Angaben von MeteoSchweiz.*

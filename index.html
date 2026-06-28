@@ -117,9 +117,13 @@
 <div class="loading" id="loading"><div class="errbox" id="loadtext"><div class="spinner"></div>Daten werden geladen…</div></div>
 
 <script>
+/* Viewer: laedt frames.json (Liste von Radar-/Vorhersagebildern) und animiert sie
+   als Overlay ueber einer Leaflet-Karte. Bilder werden per Versions-Token
+   (?v=...) cache-frei nachgeladen. */
 (function(){
   "use strict";
-  var SWISS=[46.83,8.23], Z=8;
+  // ---- Karte + Hintergrund (hell/dunkel) ----
+  var SWISS=[46.83,8.23], Z=8;                 // Standard-Zentrum/Zoom (Schweiz)
   var map=L.map('map',{center:SWISS,zoom:Z,minZoom:6,maxZoom:11,zoomControl:false}).setView(SWISS,Z);
   L.control.zoom({position:'bottomright'}).addTo(map);
   map.attributionControl.setPrefix(false);
@@ -129,35 +133,40 @@
   var dark=false;
   document.getElementById('darkBtn').onclick=function(){dark=!dark;base.setUrl(dark?DARK:LIGHT);this.classList.toggle('on',dark);
     document.body.style.background=dark?'#10140c':'#dfe5d8';document.getElementById('map').style.background=dark?'#10140c':'#dfe5d8';};
+  // ---- Standort-Knopf: per Browser-Geolocation auf den eigenen Standort zentrieren ----
   document.getElementById('homeBtn').onclick=function(){
     var btn=this; btn.classList.add('on');
     if(!navigator.geolocation){map.setView(SWISS,Z);btn.classList.remove('on');return;}
     navigator.geolocation.getCurrentPosition(function(pos){
       var ll=[pos.coords.latitude,pos.coords.longitude];
-      map.setView(ll,9);
+      map.setView(ll,9);                        // Zoom 9 = etwas Umgebung sichtbar
       if(locMarker)locMarker.setLatLng(ll);
       else locMarker=L.marker(ll,{interactive:false,keyboard:false,zIndexOffset:1000,
         icon:L.divIcon({className:'loc-marker',html:'<div></div>',iconSize:[16,16],iconAnchor:[8,8]})}).addTo(map);
       btn.classList.remove('on');
-    },function(){map.setView(SWISS,Z);btn.classList.remove('on');},
+    },function(){map.setView(SWISS,Z);btn.classList.remove('on');},   // abgelehnt -> Schweiz
     {enableHighAccuracy:true,timeout:8000,maximumAge:60000});
   };
+  // ---- Refresh-Knopf: echter Hard-Reload (mobiles Aequivalent zu Shift-F5) ----
   document.getElementById('refreshBtn').onclick=function(){
     this.classList.add('on');
-    // Hard-Reload: erzwingt frische index.html, frames.json und Bilder (umgeht den Cache)
+    // ?r=Zeitstempel erzwingt frische index.html, frames.json und Bilder (umgeht den Cache)
     location.replace(location.pathname+'?r='+Date.now());
   };
 
+  // ---- Stadtmarkierungen (Interlaken hervorgehoben) ----
   [["Zürich",47.376,8.541],["Bern",46.948,7.447],["Basel",47.559,7.588],["Genf",46.204,6.143],
    ["Lausanne",46.519,6.633],["Luzern",47.050,8.306],["St. Gallen",47.424,9.376],["Lugano",46.004,8.951],
    ["Chur",46.851,9.532],["Sion",46.233,7.360],["Interlaken",46.686,7.863,true]
   ].forEach(function(c){L.marker([c[1],c[2]],{interactive:false,keyboard:false,icon:L.divIcon({
      className:'city-label'+(c[3]?' city-home':''),html:'<div class="city-dot"></div>'+c[0],iconSize:[0,0],iconAnchor:[0,0]})}).addTo(map);});
 
+  // ---- Zustand der Animation ----
   var frames=[],bounds=null,overlays=[],idx=0,playing=false,timer=null,speed=350,refId=null,nowIdx=0,nowMs=0,loopStart=0,
-      selLatLng=null,selMarker=null,locMarker=null,bS=0,bW=0,bN=0,bE=0;
+      selLatLng=null,selMarker=null,locMarker=null,bS=0,bW=0,bN=0,bE=0;   // bS/bW/bN/bE = Kartengrenzen
   function pad(n){return ('0'+n).slice(-2)}
   function hm(d){return pad(d.getHours())+':'+pad(d.getMinutes())}
+  // Zeitbeschriftung relativ zu "jetzt": Vorhersage als "+X Min/h", Radar als "vor X Min"/"Jetzt"
   function label(fr){
     var t=new Date(fr.time).getTime();
     if(fr.kind==='forecast'){var h=Math.round((t-nowMs)/3.6e6);return {txt:(h<1?'+'+Math.round((t-nowMs)/6e4)+' Min':'+'+h+' h'),cls:'fc'};}
@@ -166,15 +175,16 @@
     return {txt:'vor '+dm+' Min',cls:'past'};
   }
 
+  // ---- Overlays (ein Bild pro Frame, nur das aktuelle sichtbar) ----
   function clearOverlays(){overlays.forEach(function(o){if(o)map.removeLayer(o)});overlays=[];}
-  function ov(i){if(overlays[i])return overlays[i];
+  function ov(i){if(overlays[i])return overlays[i];     // Overlay bei Bedarf anlegen (lazy)
     var o=L.imageOverlay(frames[i]._url,bounds,{opacity:0,interactive:false}).addTo(map);o.setZIndex(200);overlays[i]=o;return o;}
-  function show(i){
+  function show(i){                                      // Frame i zeigen, Rest ausblenden
     if(!frames.length)return;
     i=Math.max(0,Math.min(frames.length-1,i));
     ov(i).setOpacity(0.8);
     overlays.forEach(function(o,j){if(o&&j!==i)o.setOpacity(0)});
-    if(frames[i+1])ov(i+1);if(frames[i-1])ov(i-1);
+    if(frames[i+1])ov(i+1);if(frames[i-1])ov(i-1);       // Nachbarn vorladen (fluessiges Abspielen)
     idx=i;document.getElementById('slider').value=i;
     document.getElementById('bigtime').textContent=hm(new Date(frames[i].time));
     var L1=label(frames[i]),tag=document.getElementById('tag');
@@ -198,16 +208,18 @@
     document.getElementById('nowline').style.left=((nowIdx+1)/frames.length*100)+'%';
     slider.max=frames.length-1;
   }
+  // Manifest anwenden: Overlays neu aufbauen, Zeitleiste setzen, Start waehlen
   function apply(data){
-    if(data.frames.map(function(f){return f.time}).join()===refId) return;
+    if(data.frames.map(function(f){return f.time}).join()===refId) return;  // unveraendert -> nichts tun
     refId=data.frames.map(function(f){return f.time}).join();
     clearOverlays();
     bounds=data.bounds;
-    bS=bounds[0][0];bW=bounds[0][1];bN=bounds[1][0];bE=bounds[1][1];
+    bS=bounds[0][0];bW=bounds[0][1];bN=bounds[1][0];bE=bounds[1][1];        // Kartengrenzen merken
+    // Bild-URL mit Versions-Token (?v=...) -> neuer Build = neue URL = frisches Bild (kein Cache)
     frames=data.frames.map(function(f){var o=Object.assign({},f);o._url=(data.tile_base||'')+f.file+'?v='+(data.v||'');return o;});
     nowMs = data.now? new Date(data.now).getTime() : new Date(frames[frames.length-1].time).getTime();
-    nowIdx=0;for(var i=0;i<frames.length;i++){if(frames[i].kind==='radar')nowIdx=i;}
-    // Start 30 Minuten vor "jetzt": Frame mit der geringsten Zeitdifferenz zu now-30min
+    nowIdx=0;for(var i=0;i<frames.length;i++){if(frames[i].kind==='radar')nowIdx=i;}   // letztes Radarbild = "jetzt"
+    // Schleife startet 30 Min vor "jetzt": Frame mit der geringsten Zeitdifferenz dazu
     var startMs=nowMs-30*60*1000,best=1e15;loopStart=0;
     frames.forEach(function(f,i){var d=Math.abs(new Date(f.time).getTime()-startMs);if(d<best){best=d;loopStart=i;}});
     buildTimeline();
@@ -216,6 +228,7 @@
     show(loopStart); if(!playing) play();
   }
   function fail(msg){if(frames.length)return;document.getElementById('loadtext').innerHTML="⚠️ "+msg;}
+  // Manifest laden (immer cache-frei: ?Zeitstempel + no-store)
   function load(){
     fetch('frames.json?'+Date.now(),{cache:'no-store'})
       .then(function(r){return r.ok?r.json():r.json().then(function(j){throw new Error(j.error||('HTTP '+r.status))});})
