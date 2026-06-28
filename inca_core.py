@@ -591,6 +591,7 @@ def arome_fields(tmp, max_hours=12, now=None, bbox=(45.5, 48.2, 5.5, 10.6)):
         cid = byref[chosen_ref][N]
         gc = (f"{AROME_WCS}/GetCoverage?SERVICE=WCS&VERSION=2.0.1&REQUEST=GetCoverage"
               f"&format=application/wmo-grib&coverageId={cid}"
+              f"&subset=time({when:%Y-%m-%dT%H:%M:%SZ})"
               f"&subset=lat({latS},{latN})&subset=long({lonW},{lonE})")
         try:
             raw = _mf_get(gc)
