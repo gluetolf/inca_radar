@@ -308,7 +308,10 @@ def icon_ch1_fields(tmp, max_hours=30, now=None):
     # 2) Neuesten verfuegbaren Lauf finden. Die API unterstuetzt weder "latest"
     #    noch Sortierung, daher die Lauf-Zeitpunkte im 3-Stunden-Raster rueckwaerts
     #    durchprobieren (15:00, 12:00, ...) und den ersten veroeffentlichten nehmen.
-    feats, chosen = [], None
+    # 2) Neuesten AUSREICHEND veroeffentlichten Lauf finden. Ein gerade gestarteter Lauf
+    #    hat erst wenige Vorlaufzeiten -> dann lieber den vorigen, vollstaendigen nehmen.
+    MIN_HORIZONS = 12
+    feats, chosen, best_fs, best_ref = [], None, [], None
     base = (now or dt.datetime.now(dt.timezone.utc)).replace(minute=0, second=0, microsecond=0)
     base = base - dt.timedelta(hours=base.hour % 3)
     for k in range(0, 13):                                  # bis ~36 h zurueck
@@ -318,11 +321,15 @@ def icon_ch1_fields(tmp, max_hours=30, now=None):
             fs = _search({"forecast:reference_datetime": refiso})
         except Exception:
             fs = []
-        if fs:
+        if len(fs) > len(best_fs):
+            best_fs, best_ref = fs, refiso                  # bester bisher gesehener Lauf
+        if len(fs) >= MIN_HORIZONS:                         # genug veroeffentlicht -> nehmen
             feats, chosen = fs, refiso
             break
+    if not feats:                                          # keiner "komplett" -> bester verfuegbarer
+        feats, chosen = best_fs, best_ref
     if not feats:
-        feats = _search({})                                # Notnagel
+        feats = _search({})                                # allerletzter Notnagel
     # 3) (Referenz, Vorlaufzeit, GRIB-URL) je Asset sammeln
     recs = []
     for ft in feats:
@@ -390,7 +397,7 @@ def icond2_fields(tmp, max_hours=12, now=None):
     #    3-Stunden-Laeufe rueckwaerts durchgehen und das Verzeichnis-Listing pruefen.
     base = (now or dt.datetime.now(dt.timezone.utc)).replace(minute=0, second=0, microsecond=0)
     base = base - dt.timedelta(hours=base.hour % 3)
-    chosen, files = None, []
+    chosen, files, best_run, best_sel = None, [], None, []
     for k in range(0, 6):                                   # bis ~15 h zurueck (Publikationslag)
         run = base - dt.timedelta(hours=3 * k)
         url = f"{DWD_ICOND2_BASE}/{run:%H}/tot_prec/"
@@ -401,10 +408,15 @@ def icond2_fields(tmp, max_hours=12, now=None):
             continue
         names = re.findall(r'href="([^"]+)"', html)
         # regulaeres Lat/Lon-Gitter (einfacher als das Dreiecksgitter), tot_prec, dieser Lauf
-        sel = [n for n in names if "regular-lat-lon" in n and "tot_prec" in n
-               and n.endswith(".bz2") and datestr in n]
-        if sel:
-            chosen, files = run, sorted(set(sel)); break
+        sel = sorted(set(n for n in names if "regular-lat-lon" in n and "tot_prec" in n
+                         and n.endswith(".bz2") and datestr in n))
+        if len(sel) > len(best_sel):
+            best_run, best_sel = run, sel                   # bester bisher gesehener Lauf
+        if len(sel) >= 6:                                   # genug Dateien veroeffentlicht -> nehmen
+            chosen, files = run, sel
+            break
+    if not files:                                          # keiner "komplett" -> bester verfuegbarer
+        chosen, files = best_run, best_sel
     if not files:
         raise RuntimeError("Keine ICON-D2 tot_prec-Dateien (regular-lat-lon) gefunden")
     # Vorlaufstunde aus dem Dateinamen (_NNN_) -> nur bis max_hours laden (Bandbreite)
@@ -540,7 +552,7 @@ def arome_fields(tmp, max_hours=12, now=None, bbox=(45.5, 48.2, 5.5, 10.6)):
 
     # 1) GetCapabilities -> Coverage-IDs der Niederschlagsvariable
     try:
-        cap = _mf_get(f"{AROME_WCS}?SERVICE=WCS&VERSION=2.0.1&REQUEST=GetCapabilities").decode("utf-8", "ignore")
+        cap = _mf_get(f"{AROME_WCS}/GetCapabilities?SERVICE=WCS&VERSION=2.0.1&REQUEST=GetCapabilities").decode("utf-8", "ignore")
     except Exception as e:
         print("AROME GetCapabilities fehlgeschlagen:", e); return {}
     ids = re.findall(r"CoverageId>\s*([^<\s]+)\s*<", cap)
@@ -559,7 +571,7 @@ def arome_fields(tmp, max_hours=12, now=None, bbox=(45.5, 48.2, 5.5, 10.6)):
 
     # 2) DescribeCoverage -> verfuegbare Gueltigkeitszeiten
     try:
-        dc = _mf_get(f"{AROME_WCS}?SERVICE=WCS&VERSION=2.0.1&REQUEST=DescribeCoverage&coverageId={cov}").decode("utf-8", "ignore")
+        dc = _mf_get(f"{AROME_WCS}/DescribeCoverage?SERVICE=WCS&VERSION=2.0.1&REQUEST=DescribeCoverage&coverageId={cov}").decode("utf-8", "ignore")
     except Exception as e:
         print("AROME DescribeCoverage fehlgeschlagen:", e); return {}
     times = sorted(set(re.findall(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z", dc)))
@@ -574,7 +586,7 @@ def arome_fields(tmp, max_hours=12, now=None, bbox=(45.5, 48.2, 5.5, 10.6)):
         when = dt.datetime.strptime(ts, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=dt.timezone.utc)
         if not (base < when <= base + dt.timedelta(hours=max_hours)):
             continue
-        gc = (f"{AROME_WCS}?SERVICE=WCS&VERSION=2.0.1&REQUEST=GetCoverage"
+        gc = (f"{AROME_WCS}/GetCoverage?SERVICE=WCS&VERSION=2.0.1&REQUEST=GetCoverage"
               f"&format=application/wmo-grib&coverageId={cov}"
               f"&subset=time({ts})&subset=lat({latS},{latN})&subset=long({lonW},{lonE})")
         try:
