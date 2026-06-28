@@ -52,6 +52,7 @@ jobs:
           # Variable nicht mehr (er hat sinnvolle Standardwerte). Schadet nicht –
           # diese drei Zeilen koennen bei Gelegenheit auch geloescht werden.
           INCA_COLLECTION: ${{ secrets.INCA_COLLECTION }}
+          METEOFRANCE_TOKEN: ${{ secrets.METEOFRANCE_TOKEN }}
         run: python build.py
 
       # 5) Den Ordner ./site/ per FTP auf den Webspace (METAhost) laden.
