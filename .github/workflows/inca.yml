@@ -1,41 +1,69 @@
-name: INCA Radar aktualisieren
+# =============================================================================
+# inca.yml  –  GitHub-Actions-Workflow fuer das Niederschlagsradar
+#
+# Kurz gesagt: GitHub startet regelmaessig einen frischen Cloud-Rechner, laesst
+# dort build.py laufen (erzeugt den Ordner ./site/) und schiebt das Ergebnis per
+# FTP auf den Webspace. Danach wird der Rechner wieder weggeworfen.
+# Ablageort im Repo: .github/workflows/inca.yml
+# =============================================================================
 
+name: INCA Radar aktualisieren        # Anzeigename im Tab "Actions"
+
+# ---- WANN soll der Ablauf starten? ------------------------------------------
 on:
   schedule:
-    - cron: "*/10 * * * *"     # alle ~10 Minuten (GitHub kann das verzoegern)
-  workflow_dispatch:            # zusaetzlich ein Knopf zum manuellen Starten
+    - cron: "*/10 * * * *"            # alle ~10 Minuten
+                                      # Felder: Minute Stunde Tag Monat Wochentag
+                                      # Hinweis: GitHub kann geplante Laeufe um
+                                      # einige Minuten verzoegern – das ist normal.
+  workflow_dispatch:                  # zusaetzlich der "Run workflow"-Knopf von Hand
 
+# ---- Mehrere Laeufe nicht gleichzeitig ausfuehren ---------------------------
 concurrency:
-  group: inca-build
-  cancel-in-progress: false
+  group: inca-build                   # alle Laeufe gehoeren in dieselbe Gruppe
+  cancel-in-progress: false           # laeuft schon einer, wartet der neue, statt
+                                      # ihn abzubrechen (verhindert FTP-Kollisionen)
 
+# ---- WAS soll getan werden? -------------------------------------------------
 jobs:
   build-and-deploy:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-latest            # frischer, leerer Linux-Rechner in der Cloud
     steps:
+
+      # 1) Den eigenen Repo-Code auf den Rechner kopieren
       - name: Code holen
         uses: actions/checkout@v4
 
+      # 2) Python bereitstellen (mit Paket-Zwischenspeicher fuer schnellere Laeufe)
       - name: Python einrichten
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
           cache: pip
 
+      # 3) Die benoetigten Bibliotheken installieren
       - name: Abhaengigkeiten installieren
         run: pip install -r requirements.txt
 
-      - name: INCA-Daten holen und umwandeln
+      # 4) Das eigentliche Skript ausfuehren -> erzeugt den Ordner ./site/
+      - name: Radardaten holen und Karten bauen
         env:
-          INCA_COLLECTION: ${{ secrets.INCA_COLLECTION }}   # optional, sonst Auto-Discovery
+          # Altlast aus der ersten Projektversion: der heutige Code nutzt diese
+          # Variable nicht mehr (er hat sinnvolle Standardwerte). Schadet nicht –
+          # diese drei Zeilen koennen bei Gelegenheit auch geloescht werden.
+          INCA_COLLECTION: ${{ secrets.INCA_COLLECTION }}
         run: python build.py
 
+      # 5) Den Ordner ./site/ per FTP auf den Webspace (METAhost) laden.
+      #    Die echten Zugangsdaten stehen sicher in den Repository-Secrets
+      #    (Settings -> Secrets and variables -> Actions) und nie im Klartext hier.
       - name: Per FTP auf METAhost laden
         uses: SamKirkland/FTP-Deploy-Action@v4.3.5
         with:
-          server: ${{ secrets.FTP_SERVER }}
-          username: ${{ secrets.FTP_USERNAME }}
-          password: ${{ secrets.FTP_PASSWORD }}
-          local-dir: ./site/
-          server-dir: ${{ secrets.FTP_SERVER_DIR }}
-          protocol: ftps         # bei Verbindungsproblemen auf "ftp" aendern
+          server:     ${{ secrets.FTP_SERVER }}       # FTP-Host
+          username:   ${{ secrets.FTP_USERNAME }}     # FTP-Benutzer
+          password:   ${{ secrets.FTP_PASSWORD }}     # FTP-Passwort
+          local-dir:  ./site/                         # das wird hochgeladen
+          server-dir: ${{ secrets.FTP_SERVER_DIR }}   # Zielordner auf dem Webspace
+          protocol:   ftps                            # verschluesselt; bei hartnaeckigen
+                                                      # Verbindungsproblemen auf "ftp" aendern
