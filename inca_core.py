@@ -537,17 +537,20 @@ def _regular_grib_messages(path):
     return out
 
 
-def arome_fields(tmp, max_hours=12, now=None, bbox=(45.5, 48.2, 5.5, 10.6)):
+def arome_fields(tmp, max_hours=12, now=None, bbox=None):
     """Neueste AROME-0,01°-Niederschlagsvorhersage via Météo-France-WCS -> {datetime: Feld mm/h}.
-    bbox = (latS, latN, lonW, lonE) fuer den Schweizer Ausschnitt.
+    bbox = (latS, latN, lonW, lonE). Standard = volle Kartenflaeche (DST_*), damit AROME
+    nach Westen/Norden/Sueden so weit reicht wie die anderen Daten; im Osten endet AROMEs
+    Modellgebiet von selbst (die WCS schneidet zu) -> der weiche Rand in build.py glaettet das.
 
-    HINWEIS: Erster Lauf = Entdeckung. Das exakte WCS-Format (Coverage-IDs, Zeitschluessel,
-    apikey-Header, Einheit) konnte offline nicht getestet werden. Die Funktion druckt daher
-    viel Diagnose und gibt im Zweifel {} zurueck, damit der Build (CH1+D2) nie abbricht."""
+    HINWEIS: Das exakte WCS-Format konnte offline nicht getestet werden; die Funktion druckt
+    Diagnose und gibt im Zweifel {} zurueck, damit der Build (CH1+D2) nie abbricht."""
     import re
     from scipy.ndimage import gaussian_filter
     if not os.environ.get("METEOFRANCE_TOKEN", ""):
         print("AROME: METEOFRANCE_TOKEN fehlt -> uebersprungen"); return {}
+    if bbox is None:
+        bbox = (DST_S, DST_N, DST_W, DST_E)               # ganze Karte
     latS, latN, lonW, lonE = bbox
 
     # 1) GetCapabilities -> Coverage-IDs der Niederschlagsvariable

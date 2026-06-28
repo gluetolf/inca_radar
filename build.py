@@ -119,6 +119,18 @@ def build(local_radar=None, local_fc=None, local_icon_dir=None):
         ch1_at = interp_factory(ch1)
         arome_at = interp_factory(arome)
 
+        # AROME deckt nur einen Ausschnitt ab. Damit an seiner Datengrenze keine harte
+        # Kante entsteht, AROMEs Gewicht zum Rand hin weich auf 0 laufen lassen: Abstand
+        # jedes Pixels zum Datenrand -> Rampe ueber AROME_FEATHER_PX Pixel (1 innen, 0 am Rand).
+        AROME_W = float(os.environ.get("AROME_W", "1.0"))            # Grundgewicht von AROME
+        AROME_FEATHER_PX = float(os.environ.get("AROME_FEATHER_PX", "25"))   # Randbreite (~0,25°)
+        arome_feather = None
+        if arome:
+            from scipy.ndimage import distance_transform_edt
+            amask = np.isfinite(next(iter(arome.values())))         # AROME-Datenmaske (Gebiet)
+            dist = distance_transform_edt(amask)                    # Pixelabstand zum Rand (innen)
+            arome_feather = (AROME_W * np.clip(dist / max(AROME_FEATHER_PX, 1), 0, 1)).astype("float32")
+
         # Zeitachse = alle Zeitpunkte aller Modelle, auf das Vorhersagefenster begrenzt
         times = sorted(set(ch1) | set(d2) | set(arome))
         if now is not None:
@@ -130,15 +142,24 @@ def build(local_radar=None, local_fc=None, local_icon_dir=None):
             parts = [x for x in (a, b, cc) if x is not None]
             if not parts:
                 continue
-            # Kernregel: Mittelwert je Pixel ueber alle vorhandenen Modelle. nanmean mittelt
-            # pro Pixel nur dort, wo Werte da sind; wo nur eines liefert (z. B. AROME fehlt
-            # im Osten), bleibt dessen Wert -> automatisch weicher Fallback ohne harte Kante.
-            if len(parts) > 1:
+            # Gewichtetes Mittel je Pixel: CH1 und D2 mit Gewicht 1, AROME mit dem weichen
+            # Randgewicht (innen 1, am Datenrand 0). So wird das Ergebnis dort, wo AROME
+            # auslaeuft, stufenlos wieder zum CH1+D2-Mittel -> keine harte Kante. Wo nur ein
+            # Modell vorhanden ist, bleibt dessen Wert (Fallback).
+            num = np.zeros((c.DH, c.DW), "float32")
+            den = np.zeros((c.DH, c.DW), "float32")
+            nmodels = 0
+            for f, w in ((a, None), (b, None), (cc, arome_feather)):
+                if f is None:
+                    continue
+                nmodels += 1
+                m = np.isfinite(f)
+                wt = m.astype("float32") if w is None else np.where(m, w, 0.0).astype("float32")
+                num += np.where(m, f, 0.0) * wt
+                den += wt
+            field = np.where(den > 0, num / np.where(den > 0, den, 1.0), np.nan).astype("float32")
+            if nmodels > 1:
                 meaned += 1
-                with np.errstate(all="ignore"):
-                    field = np.nanmean(np.stack(parts), axis=0)
-            else:
-                field = parts[0]
             if cc is not None:
                 with_a += 1
             # Uebergang glaetten: in den ersten BLEND_MIN Minuten zum letzten Radarbild ueberblenden
