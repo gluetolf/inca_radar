@@ -134,7 +134,7 @@
     if(!navigator.geolocation){map.setView(SWISS,Z);btn.classList.remove('on');return;}
     navigator.geolocation.getCurrentPosition(function(pos){
       var ll=[pos.coords.latitude,pos.coords.longitude];
-      map.setView(ll,11);
+      map.setView(ll,9);
       if(locMarker)locMarker.setLatLng(ll);
       else locMarker=L.marker(ll,{interactive:false,keyboard:false,zIndexOffset:1000,
         icon:L.divIcon({className:'loc-marker',html:'<div></div>',iconSize:[16,16],iconAnchor:[8,8]})}).addTo(map);
