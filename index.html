@@ -87,6 +87,7 @@
   <div class="status"><span class="live"></span><span id="updated">lädt…</span></div>
 </div>
 <div class="map-tools">
+  <button id="refreshBtn" title="Neu laden (neueste Version)">⟳</button>
   <button id="darkBtn" title="Hell/Dunkel">◐</button>
   <button id="homeBtn" title="Auf Schweiz zentrieren">⌖</button>
 </div>
@@ -128,6 +129,11 @@
   document.getElementById('darkBtn').onclick=function(){dark=!dark;base.setUrl(dark?DARK:LIGHT);this.classList.toggle('on',dark);
     document.body.style.background=dark?'#10140c':'#dfe5d8';document.getElementById('map').style.background=dark?'#10140c':'#dfe5d8';};
   document.getElementById('homeBtn').onclick=function(){map.setView(SWISS,Z)};
+  document.getElementById('refreshBtn').onclick=function(){
+    this.classList.add('on');
+    // Hard-Reload: erzwingt frische index.html, frames.json und Bilder (umgeht den Cache)
+    location.replace(location.pathname+'?r='+Date.now());
+  };
 
   [["Zürich",47.376,8.541],["Bern",46.948,7.447],["Basel",47.559,7.588],["Genf",46.204,6.143],
    ["Lausanne",46.519,6.633],["Luzern",47.050,8.306],["St. Gallen",47.424,9.376],["Lugano",46.004,8.951],
@@ -185,7 +191,7 @@
     clearOverlays();
     bounds=data.bounds;
     bS=bounds[0][0];bW=bounds[0][1];bN=bounds[1][0];bE=bounds[1][1];
-    frames=data.frames.map(function(f){var o=Object.assign({},f);o._url=(data.tile_base||'')+f.file;return o;});
+    frames=data.frames.map(function(f){var o=Object.assign({},f);o._url=(data.tile_base||'')+f.file+'?v='+(data.v||'');return o;});
     nowMs = data.now? new Date(data.now).getTime() : new Date(frames[frames.length-1].time).getTime();
     nowIdx=0;for(var i=0;i<frames.length;i++){if(frames[i].kind==='radar')nowIdx=i;}
     // Start 30 Minuten vor "jetzt": Frame mit der geringsten Zeitdifferenz zu now-30min

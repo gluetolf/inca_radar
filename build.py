@@ -183,6 +183,7 @@ def build(local_radar=None, local_fc=None, local_icon_dir=None):
         "source": "Radar & ICON-CH1: MeteoSchweiz · ICON-D2: DWD (Vorhersage = Mittelwert)",
         "bounds": c.BOUNDS,
         "now": now.isoformat() if now else None,
+        "v": int(dt.datetime.now(dt.timezone.utc).timestamp()),   # Cache-Buster pro Build
         "frames": frames,
     }
     json.dump(manifest, open(os.path.join(OUT, "frames.json"), "w"))
