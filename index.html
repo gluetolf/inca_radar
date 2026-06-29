@@ -192,9 +192,15 @@
     document.querySelectorAll('.tick').forEach(function(t,j){t.classList.toggle('active',j===i)});
     updateReadout();
   }
+  function frameDur(i){                                   // Anzeigedauer ~ realer Zeitabstand
+    var j=i+1; if(j>=frames.length) return speed;         // (5 Min = 1x, 15 Min = 3x); Schleifenende: 1x
+    var g=(new Date(frames[j].time)-new Date(frames[i].time))/60000;   // Abstand in Minuten
+    return speed*((g>0?g:5)/5);
+  }
   function step(){show(idx+1>=frames.length?loopStart:idx+1)}
-  function play(){playing=true;document.getElementById('play').textContent='❚❚';clearInterval(timer);timer=setInterval(step,speed)}
-  function pause(){playing=false;document.getElementById('play').textContent='▶';clearInterval(timer)}
+  function schedule(){clearTimeout(timer);timer=setTimeout(function(){step();if(playing)schedule();},frameDur(idx));}
+  function play(){playing=true;document.getElementById('play').textContent='❚❚';schedule();}
+  function pause(){playing=false;document.getElementById('play').textContent='▶';clearTimeout(timer)}
   document.getElementById('play').onclick=function(){playing?pause():play()};
   var slider=document.getElementById('slider');
   slider.oninput=function(){pause();show(+this.value)};
@@ -223,9 +229,22 @@
     var startMs=nowMs-30*60*1000,best=1e15;loopStart=0;
     frames.forEach(function(f,i){var d=Math.abs(new Date(f.time).getTime()-startMs);if(d<best){best=d;loopStart=i;}});
     buildTimeline();
-    document.getElementById('updated').textContent="Stand "+hm(new Date(nowMs))+" · "+frames.length+" Bilder";
+    buildMs = data.v ? data.v * 1000 : nowMs;          // Zeitpunkt des letzten Builds
+    frameCount = frames.length;
+    updateStamp();
     document.getElementById('loading').style.display='none';
     show(loopStart); if(!playing) play();
+  }
+  // Frische-Anzeige: wie lange ist der letzte Build her? Punkt gruen/gelb/rot.
+  var buildMs = 0, frameCount = 0;
+  function updateStamp(){
+    var el = document.getElementById('updated'); if(!el) return;
+    var dot = document.querySelector('.status .live');
+    if(!buildMs){el.textContent='lädt…';return;}
+    var ageMin = Math.max(0, Math.round((Date.now() - buildMs) / 60000));
+    var age = ageMin < 1 ? 'gerade aktualisiert' : ('vor ' + ageMin + ' Min');
+    el.textContent = "Stand " + hm(new Date(nowMs)) + " · " + age;
+    if(dot) dot.style.background = ageMin > 40 ? '#d64545' : (ageMin > 20 ? '#e0a32e' : '');
   }
   function fail(msg){if(frames.length)return;document.getElementById('loadtext').innerHTML="⚠️ "+msg;}
   // Manifest laden (immer cache-frei: ?Zeitstempel + no-store)
@@ -235,7 +254,7 @@
       .then(function(d){if(d.frames&&d.frames.length)apply(d);else fail('Keine Daten verfügbar.');})
       .catch(function(e){fail((e&&e.message)||'Daten konnten nicht geladen werden.');});
   }
-  load(); setInterval(load,5*60*1000);
+  load(); setInterval(load,5*60*1000); setInterval(updateStamp,30*1000);
 
   document.addEventListener('keydown',function(e){
     if(e.code==='Space'){e.preventDefault();playing?pause():play();}
