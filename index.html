@@ -51,6 +51,8 @@
   .tick{flex:1;height:6px;margin:0 1px;border-radius:3px;background:#cfd6c6;transition:background .2s,height .2s}
   .tick.past{background:#aab59b}.tick.fc{background:#f0c98a}.tick.active{background:var(--green);height:14px}
   .nowline{position:absolute;top:-3px;bottom:-3px;width:2px;background:var(--green-dark);border-radius:2px;opacity:.6}
+  .dayline{position:absolute;top:-2px;bottom:-2px;width:1px;background:rgba(0,0,0,.16);pointer-events:none}
+  .daylabel{position:absolute;top:-2px;transform:translateX(3px);font-size:9px;font-weight:700;color:var(--muted);line-height:1;pointer-events:none;white-space:nowrap}
   input[type=range]{position:absolute;inset:0;width:100%;height:100%;margin:0;opacity:0;cursor:pointer}
   .scalewrap{margin-top:12px}
   .scalehead{display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-bottom:5px}
@@ -166,6 +168,16 @@
       selLatLng=null,selMarker=null,locMarker=null,bS=0,bW=0,bN=0,bE=0;   // bS/bW/bN/bE = Kartengrenzen
   function pad(n){return ('0'+n).slice(-2)}
   function hm(d){return pad(d.getHours())+':'+pad(d.getMinutes())}
+  // Relativer Tag (Gestern/Heute/Morgen/Übermorgen), sonst Wochentag – fuer die grosse Uhrzeit
+  function dayLabel(d){
+    var n=new Date();
+    var a=new Date(d.getFullYear(),d.getMonth(),d.getDate());
+    var b=new Date(n.getFullYear(),n.getMonth(),n.getDate());
+    var diff=Math.round((a-b)/86400000);
+    if(diff===-1)return 'Gestern'; if(diff===0)return 'Heute';
+    if(diff===1)return 'Morgen';   if(diff===2)return 'Übermorgen';
+    return ['Sonntag','Montag','Dienstag','Mittwoch','Donnerstag','Freitag','Samstag'][d.getDay()];
+  }
   // Zeitbeschriftung relativ zu "jetzt": Vorhersage als "+X Min/h", Radar als "vor X Min"/"Jetzt"
   function label(fr){
     var t=new Date(fr.time).getTime();
@@ -186,7 +198,8 @@
     overlays.forEach(function(o,j){if(o&&j!==i)o.setOpacity(0)});
     if(frames[i+1])ov(i+1);if(frames[i-1])ov(i-1);       // Nachbarn vorladen (fluessiges Abspielen)
     idx=i;document.getElementById('slider').value=i;
-    document.getElementById('bigtime').textContent=hm(new Date(frames[i].time));
+    var _d=new Date(frames[i].time);
+    document.getElementById('bigtime').textContent=dayLabel(_d)+' '+hm(_d);
     var L1=label(frames[i]),tag=document.getElementById('tag');
     tag.textContent=L1.txt;tag.className='tag '+L1.cls;
     document.querySelectorAll('.tick').forEach(function(t,j){t.classList.toggle('active',j===i)});
@@ -211,6 +224,16 @@
   function buildTimeline(){
     var tk=document.getElementById('ticks');tk.innerHTML='';
     frames.forEach(function(fr){var d=document.createElement('div');d.className='tick '+(fr.kind==='forecast'?'fc':'past');tk.appendChild(d);});
+    // Tagesgrenzen: bei jedem Wechsel des lokalen Kalendertags eine Linie + Wochentags-Kuerzel
+    var ab=['So','Mo','Di','Mi','Do','Fr','Sa'];
+    for(var k=1;k<frames.length;k++){
+      var p=new Date(frames[k-1].time),q=new Date(frames[k].time);
+      if(p.getDate()!==q.getDate()||p.getMonth()!==q.getMonth()||p.getFullYear()!==q.getFullYear()){
+        var pos=(k/frames.length*100);
+        var ln=document.createElement('div');ln.className='dayline';ln.style.left=pos+'%';tk.appendChild(ln);
+        var lb=document.createElement('div');lb.className='daylabel';lb.style.left=pos+'%';lb.textContent=ab[q.getDay()];tk.appendChild(lb);
+      }
+    }
     document.getElementById('nowline').style.left=((nowIdx+1)/frames.length*100)+'%';
     slider.max=frames.length-1;
   }
