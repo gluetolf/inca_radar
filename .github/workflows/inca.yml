@@ -1,22 +1,22 @@
 # =============================================================================
 # inca.yml  –  GitHub-Actions-Workflow fuer das Niederschlagsradar
 #
-# Kurz gesagt: GitHub startet regelmaessig einen frischen Cloud-Rechner, laesst
-# dort build.py laufen (erzeugt den Ordner ./site/) und schiebt das Ergebnis per
-# FTP auf den Webspace. Danach wird der Rechner wieder weggeworfen.
+# Ablauf: Ein externer Dienst (cron-job.org) stoesst diesen Workflow alle 5 Minuten
+# ueber die GitHub-API an (workflow_dispatch). GitHub startet dann einen frischen
+# Cloud-Rechner, laesst build.py laufen (erzeugt ./site/) und schiebt das Ergebnis
+# per FTP auf den Webspace. Danach wird der Rechner weggeworfen.
 # Ablageort im Repo: .github/workflows/inca.yml
+#
+# Hinweis: Es gibt hier KEINEN "schedule"-Block mehr. Der Takt kommt von cron-job.org.
+# Vorteil: keine doppelten Laeufe, und GitHub deaktiviert den Workflow nicht mehr
+# automatisch nach 60 Tagen (das betrifft nur geplante/"scheduled" Workflows).
 # =============================================================================
 
 name: INCA Radar aktualisieren        # Anzeigename im Tab "Actions"
 
 # ---- WANN soll der Ablauf starten? ------------------------------------------
 on:
-  schedule:
-    - cron: "*/10 * * * *"            # alle ~10 Minuten
-                                      # Felder: Minute Stunde Tag Monat Wochentag
-                                      # Hinweis: GitHub kann geplante Laeufe um
-                                      # einige Minuten verzoegern – das ist normal.
-  workflow_dispatch:                  # zusaetzlich der "Run workflow"-Knopf von Hand
+  workflow_dispatch:                  # per API (cron-job.org) ODER "Run workflow"-Knopf
 
 # ---- Mehrere Laeufe nicht gleichzeitig ausfuehren ---------------------------
 concurrency:
@@ -46,18 +46,14 @@ jobs:
         run: pip install -r requirements.txt
 
       # 4) Das eigentliche Skript ausfuehren -> erzeugt den Ordner ./site/
+      #    METEOFRANCE_TOKEN wird aus den Repository-Secrets durchgereicht (fuer AROME).
       - name: Radardaten holen und Karten bauen
         env:
-          # Altlast aus der ersten Projektversion: der heutige Code nutzt diese
-          # Variable nicht mehr (er hat sinnvolle Standardwerte). Schadet nicht –
-          # diese drei Zeilen koennen bei Gelegenheit auch geloescht werden.
-          INCA_COLLECTION: ${{ secrets.INCA_COLLECTION }}
           METEOFRANCE_TOKEN: ${{ secrets.METEOFRANCE_TOKEN }}
         run: python build.py
 
       # 5) Den Ordner ./site/ per FTP auf den Webspace (METAhost) laden.
-      #    Die echten Zugangsdaten stehen sicher in den Repository-Secrets
-      #    (Settings -> Secrets and variables -> Actions) und nie im Klartext hier.
+      #    Die Zugangsdaten stehen sicher in den Repository-Secrets und nie im Klartext.
       - name: Per FTP auf METAhost laden
         uses: SamKirkland/FTP-Deploy-Action@v4.3.5
         with:
