@@ -63,6 +63,10 @@ SCALE = [
 # Baender (0–0.05 und 0.05–0.3) bleiben transparent.
 DISPLAY_FLOOR = float(os.environ.get("DISPLAY_FLOOR", "0.3"))
 
+# Weicher Rand gegen "ausgefranste" Kanten: oberhalb der Untergrenze die Deckkraft ueber
+# dieses Band (mm/h) sanft von 0 auf voll einblenden, statt hart abzuschneiden.
+EDGE_FADE = float(os.environ.get("EDGE_FADE", "0.5"))
+
 
 def colorize(arr):
     """2D-Feld (mm/h, NaN = keine Daten) -> RGBA-Bild nach SCALE.
@@ -76,6 +80,11 @@ def colorize(arr):
             continue
         rgba[(a > prev) & (a <= thr)] = col
         prev = thr
+    # Weicher Rand: Deckkraft direkt oberhalb der Untergrenze sanft einblenden, damit die
+    # Aussenkante nicht gezackt/ausgefranst wirkt. Werte und Farben bleiben unveraendert.
+    if EDGE_FADE > 0:
+        edge = np.clip((a - DISPLAY_FLOOR) / EDGE_FADE, 0.0, 1.0).astype("float32")
+        rgba[..., 3] = (rgba[..., 3].astype("float32") * edge).astype("uint8")
     return rgba
 
 
