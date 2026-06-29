@@ -63,6 +63,8 @@ def build(local_radar=None, local_fc=None, local_icon_dir=None):
                 print("  Radarbild uebersprungen:", e)
         rendered.sort(key=lambda x: x[0])
         for when, fn, mx in rendered:
+            if mx < c.DISPLAY_FLOOR:                          # nichts Sichtbares -> als trocken melden
+                mx = 0.0
             frames.append({"file": fn, "time": when.isoformat(), "kind": "radar", "max_mmh": mx})
         last_radar = None
         if rendered:
@@ -175,6 +177,8 @@ def build(local_radar=None, local_fc=None, local_icon_dir=None):
             Image.fromarray(c.colorize(field), "RGBA").save(os.path.join(OUT, fn))
             mxv = np.nanmax(field)
             mx = round(float(mxv), 1) if np.isfinite(mxv) else 0.0   # fuer den "trocken"-Hinweis
+            if mx < c.DISPLAY_FLOOR:                                  # nichts Sichtbares -> als trocken melden
+                mx = 0.0
             if mx > 0:
                 wet += 1
             # Diagnose-Etikett: welche Quelle(n) das Bild gespeist haben (i = interpoliert)

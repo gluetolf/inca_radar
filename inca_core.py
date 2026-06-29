@@ -58,15 +58,22 @@ SCALE = [
     (1e9,  (170,  25, 110, 246)),
 ]
 
+# Anzeige-Untergrenze (mm/h): leichter Niederschlag darunter wird NICHT eingefaerbt,
+# sonst werden unrealistisch grosse Flaechen ausgewiesen. 0.3 = die zwei blassesten
+# Baender (0–0.05 und 0.05–0.3) bleiben transparent.
+DISPLAY_FLOOR = float(os.environ.get("DISPLAY_FLOOR", "0.3"))
+
 
 def colorize(arr):
     """2D-Feld (mm/h, NaN = keine Daten) -> RGBA-Bild nach SCALE.
-    Werte <= 0 und NaN bleiben transparent (Alpha 0)."""
+    Werte <= DISPLAY_FLOOR und NaN bleiben transparent (Alpha 0)."""
     h, w = arr.shape
     rgba = np.zeros((h, w, 4), dtype=np.uint8)         # Start: alles transparent
     a = np.nan_to_num(arr, nan=0.0)                    # NaN -> 0 (faellt in keine Stufe)
-    prev = 0.0
+    prev = DISPLAY_FLOOR                               # Untergrenze: leichter Niederschlag wird nicht gezeigt
     for thr, col in SCALE:                             # jede Stufe (prev, thr] einfaerben
+        if thr <= DISPLAY_FLOOR:                       # Baender unterhalb der Untergrenze ueberspringen
+            continue
         rgba[(a > prev) & (a <= thr)] = col
         prev = thr
     return rgba

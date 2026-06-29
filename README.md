@@ -1,211 +1,189 @@
-# Niederschlagsradar Schweiz
+# Niederschlagsradar Schweiz (LANDI-Stil)
 
-Animiertes Niederschlagsradar im Stil der MeteoSchweiz-/LANDI-Karte, das
-**Messung (Vergangenheit)** und **Vorhersage (Zukunft)** nahtlos auf einer
-einzigen Karte zeigt. Die Seite ist eine rein statische Website, die alle
-~10 Minuten von einem GitHub-Actions-Workflow neu erzeugt und per FTP
-veröffentlicht wird.
+Animierte, fensterfüllende Niederschlagskarte für die Schweiz: **gemessenes Radar
+(Vergangenheit)** nahtlos verbunden mit einer **Modell-Vorhersage (Zukunft)** auf
+einer einzigen Leaflet-Karte. Wird als statische Seite alle 10 Minuten automatisch
+neu gebaut und per FTP veröffentlicht.
 
 **Live:** https://eigermaker.ch/radar/
 
 ---
 
-## Funktionsweise
+## Überblick: Woher die Daten kommen
 
-Die Animation besteht aus zwei aneinandergehängten Teilen, beide auf demselben
-WGS84-Raster und mit derselben Radar-Farbskala:
+| Zeitraum | Quelle | Auflösung | Takt |
+|---|---|---|---|
+| **Vergangenheit → jetzt** | MeteoSchweiz Radar `ch.meteoschweiz.ogd-radar-precip` (RZC, ODIM-HDF5) | 1 km | 5 Min |
+| **Zukunft** | **Mittelwert** aus drei Modellen (siehe unten) | 1–2,2 km | 15 Min |
 
-| Zeitbereich | Quelle | Auflösung | Format |
-|-------------|--------|-----------|--------|
-| **Vergangenheit → jetzt** | MeteoSchweiz-Radar `ch.meteoschweiz.ogd-radar-precip` (RZC) | 1 km, **5 Min** | ODIM-HDF5 |
-| **Zukunft (Nahbereich)** | **Mittelwert** aus ICON-CH1 + ICON-D2 | 1–2 km, **15 Min** | GRIB2 |
-| **Zukunft (späterer Verlauf)** | ICON-CH1 allein | 1 km, stündlich | GRIB2 |
-| **Notfall-Rückfall** | MeteoSchweiz-Lokalprognose `ch.meteoschweiz.ogd-local-forecasting` | Punktraster | CSV |
+Die Zukunft ist ein **gewichtetes Mittel pro Bildpunkt** aus:
 
-### Vorhersage = selbst gerechneter Mehrmodell-Zusammenzug
+| Modell | Betreiber | Auflösung | Reichweite | Bezug |
+|---|---|---|---|---|
+| **ICON-CH1** | MeteoSchweiz (STAC, GRIB2) | 1 km, stündlich | bis +30 h | TOT_PREC |
+| **ICON-D2** | DWD (opendata, GRIB2) | 2,2 km, 15-Min | bis +12 h | TOT_PREC |
+| **AROME France HD** | Météo-France (WCS, GRIB2) | 1,3 km, stündlich | bis +12 h (von +42 h verfügbar) | TOTAL_PRECIPITATION |
 
-Die Zukunft wird aus zwei frei verfügbaren Modellen kombiniert (analog zu dem,
-was Open-Meteo intern tut, hier aber selbst gerechnet):
-
-- **ICON-CH1** — MeteoSchweiz, 1 km, stündlich, bis +33 h. Höchste räumliche
-  Auflösung, die für die ganze Schweiz offen verfügbar ist.
-- **ICON-D2** — Deutscher Wetterdienst (DWD), 2,2 km, **15-minütig**, bis +12 h
-  (konfigurierbar). Bringt die feine Zeitauflösung.
-
-**Kombinationsregel (pro Zeitpunkt und pro Bildpunkt):**
-
-1. Liefern **beide** Modelle einen Wert → **Mittelwert**.
-2. Liefert nur **eines** einen Wert → genau **dieses** (Fallback).
-3. Liefert **keines** → transparent.
-
-Fällt eine ganze Quelle aus (z. B. DWD nicht erreichbar), läuft die Vorhersage
-automatisch nur mit dem anderen Modell weiter; fallen beide aus, greift die
-data4web-Lokalprognose als letzter Rückfall.
-
-Zwei Glättungen sorgen für einen ruhigen Verlauf:
-
-- **CH1 auf 15 Minuten interpoliert** — damit jeder Schritt denselben Charakter
-  hat und kein stündliches „Pulsieren" entsteht.
-- **Radar-Verankerung am Übergang** — in der ersten Stunde wird die Vorhersage
-  zum letzten gemessenen Radarbild hin überblendet (Standard 60 Min, per
-  `BLEND_MIN` einstellbar), damit die Naht zwischen Messung und Modell nicht
-  springt.
+**Kombinationsregel:** Je Bildpunkt wird über alle Modelle gemittelt, die dort einen
+Wert liefern. Wo nur zwei (oder eines) Daten haben, wird eben aus diesen gemittelt –
+es gibt also keine harte Kante, wo ein Modell endet. CH1 und AROME (stündlich) werden
+linear auf 15-Minuten-Schritte interpoliert, damit jeder Animationsschritt denselben
+Charakter hat (kein „Pulsieren"). ICON-D2 liefert die 15 Minuten nativ.
 
 ---
 
-## Datenfluss
+## Wichtige Eigenschaften
 
-```
-GitHub Actions (Cron ~alle 10 Min)
-        │
-        ▼
-   python build.py
-        │  ├─ Radar:   data.geo.admin.ch  (STAC → ODIM-HDF5)
-        │  ├─ ICON-CH1: data.geo.admin.ch (STAC → GRIB2)
-        │  └─ ICON-D2:  opendata.dwd.de    (GRIB2 .bz2)
-        ▼
-   ./site/  (index.html, frames.json, r*.png, f*.png)
-        │
-        ▼  FTP-Deploy (SamKirkland/FTP-Deploy-Action)
-        ▼
-   METAhost  →  https://eigermaker.ch/radar/
-```
-
-Wichtig: Der **GitHub-Actions-Runner** hat vollen Internetzugang und erreicht
-`data.geo.admin.ch` und `opendata.dwd.de`. Der Build läuft also nur dort live —
-lokal lassen sich die Renderer mit Beispieldateien testen (siehe unten).
+- **Weicher AROME-Rand.** AROME deckt Frankreich und Umland ab und reicht nach
+  Westen/Norden/Süden bis zum Kartenrand. Nur im Osten (über Österreich) endet sein
+  Modellgebiet. Dort läuft AROMEs Gewicht über einen schmalen Streifen sanft auf 0 –
+  das Ergebnis wird stufenlos wieder zum CH1+D2-Mittel, **ohne sichtbare Kante**.
+- **Radar-Verankerung.** In den ersten 60 Minuten der Vorhersage wird zum letzten
+  echten Radarbild hin übergeblendet, damit der Übergang Messung → Prognose fließt.
+- **Anzeige-Untergrenze 0,3 mm/h.** Sehr leichter Niederschlag (< 0,3 mm/h) wird
+  **nicht** eingefärbt, damit keine unrealistisch großen, blassen Flächen entstehen.
+  Gilt einheitlich für Radar und Prognose.
+- **Robuste Laufauswahl.** Es wird jeweils der neueste, **ausreichend veröffentlichte**
+  Modelllauf genommen (frisch gestartete, halb-publizierte Läufe werden übersprungen):
+  ICON-CH1 ≥ 12 Vorlaufzeiten, ICON-D2 ≥ 6 Dateien, AROME ≥ 6 Leads.
+- **Selbstheilend.** Fällt ein Modell aus, läuft der Build mit den übrigen weiter – die
+  Karte ist nie leer.
 
 ---
 
-## Projektdateien
+## Farbskala
+
+Diskrete Stufen wie beim klassischen Radar. Schwelle = obere Grenze der Stufe (mm/h):
+
+| von–bis (mm/h) | Farbe |
+|---|---|
+| < 0,3 | (transparent, nicht angezeigt) |
+| 0,3 – 1 | Blau |
+| 1 – 2 | Türkis |
+| 2 – 5 | Grün |
+| 5 – 10 | Gelb |
+| 10 – 20 | Orange |
+| 20 – 50 | Rot |
+| > 50 | Magenta |
+
+Die Skala in `inca_core.py` (`SCALE`) und im Viewer (`SCALE_JS` in `index.html`)
+müssen übereinstimmen, weil die Punkt-Mengenanzeige die Pixelfarbe zurückrechnet.
+
+---
+
+## Viewer (`index.html`)
+
+- Heller/dunkler Kartenstil, Play/Scrubber/Tempo (langsam/normal/schnell)
+- „Jetzt"-Trennlinie zwischen Vergangenheit und Vorhersage; Start 30 Min vor jetzt
+- Städtebeschriftung (Interlaken grün hervorgehoben)
+- **Punkt-Mengenanzeige:** Karte antippen → Chip mit mm/h-Bereich am gewählten Ort
+- „Kein Niederschlag"-Hinweis, weiche Überblendung zwischen Bildern (Crossfade)
+- **⟳ Neu laden** (umgeht den Browser-Cache), **⌖ Standort** (Geolocation)
+- Cache-Buster an den Bild-URLs, damit immer die frischen Karten geladen werden
+
+---
+
+## Aufbau / Dateien
 
 | Datei | Zweck |
-|-------|-------|
-| `build.py` | Orchestriert den Lauf: Radar + Vorhersage kombinieren, PNGs und `frames.json` erzeugen, `index.html` kopieren. |
-| `inca_core.py` | Kernlogik: Datenabruf (STAC/DWD), Dekodierung (HDF5/GRIB2), Umprojektion auf das gemeinsame Raster, Farbskala. |
-| `index.html` | Der Viewer (Leaflet): Animation, Bedienung, Punkt-Abfrage, Standort, Cache-Busting. |
-| `requirements.txt` | Python-Abhängigkeiten. |
-| `Data4Web_Legend_PLZ.csv` | PLZ→Koordinaten für den data4web-Rückfall. |
-| `.github/workflows/inca.yml` | Workflow: Build + FTP-Deploy. |
+|---|---|
+| `inca_core.py` | Kernlogik: Radar lesen, ICON-CH1/ICON-D2/AROME holen, reprojizieren, einfärben |
+| `build.py` | Ablauf: Radar (Vergangenheit) + 3-Modell-Mittel (Zukunft) → `site/` |
+| `index.html` | Leaflet-Viewer (wird beim Build nach `site/` kopiert) |
+| `requirements.txt` | Python-Abhängigkeiten |
+| `.github/workflows/inca.yml` | Automatik: Build + FTP-Upload |
+| `Data4Web_Legend_PLZ.csv` | nur für den optionalen data4web-Notfall-Fallback |
 
-Erzeugte Ausgaben (nicht eingecheckt, liegen in `./site/`):
-`index.html`, `frames.json`, `r00.png…` (Radar), `f00.png…` (Vorhersage).
-
----
-
-## Farbskala (mm/h)
-
-Diskrete Stufen wie beim klassischen Radar, von leichtem Niederschlag (hellblau)
-bis Gewitter (rot/magenta):
-
-`0,05 · 0,3 · 1 · 2 · 5 · 10 · 20 · 50 · >50`  mm/h
-
-Definiert in `inca_core.py` (`SCALE`) und gespiegelt im Viewer (`SCALE_JS`) —
-**beide müssen übereinstimmen**, sonst stimmt die Mengenanzeige am angetippten
-Punkt nicht.
+**Gemeinsames Raster:** EPSG:4326, West/Ost/Süd/Nord = 2,6 / 12,5 / 43,6 / 49,5 Grad,
+0,01° Auflösung. Alle Quellen werden darauf reprojiziert.
 
 ---
 
-## Viewer-Funktionen
+## Deployment
 
-- Abspielen / Pause / Bild-für-Bild, Geschwindigkeit (langsam/normal/schnell)
-- Start 30 Minuten vor „jetzt", „Jetzt"-Trenner in der Zeitleiste
-- Hell-/Dunkel-Modus, Städtebeschriftung, Legende
-- **Punkt-Abfrage:** Karte antippen → Niederschlagsmenge an diesem Ort für die
-  gewählte Zeit (aus der Pixelfarbe ausgelesen)
-- **„kein Niederschlag"-Hinweis** auf trockenen Bildern
-- **Standort-Knopf** (⌖): zentriert per Geolocation auf den eigenen Standort
-- **Refresh-Knopf** (⟳): erzwingt einen Hard-Reload (umgeht den Browser-Cache)
-- Weiche Überblendung zwischen den Bildern
+GitHub Actions baut die Seite und lädt sie per FTP zu METAhost hoch.
 
-### Cache-Busting
+- **Auslöser:** alle 10 Minuten (Cron) + manuell („Run workflow").
+- **Ablauf:** `python build.py` erzeugt `site/` (index.html, frames.json, PNGs) →
+  Upload via FTP-Deploy-Action.
 
-Die Bilddateien heißen bei jedem Build gleich (`r00.png`, `f00.png` …). Damit
-mobile Browser nicht alte Bilder aus dem Cache zeigen, hängt der Viewer an jede
-Bild-URL ein Versions-Kürzel `?v=<Build-Zeit>` (Feld `v` in `frames.json`). Die
-Seite frischt sich dadurch beim automatischen 5-Minuten-Update von selbst auf;
-der ⟳-Knopf erzwingt zusätzlich einen vollständigen Hard-Reload.
+> **Hinweis:** GitHub deaktiviert geplante Workflows nach 60 Tagen ohne Commit.
+> Wenn die Automatik stoppt, im Repo einen kleinen Commit machen (oder einmal
+> „Run workflow" drücken).
 
----
+### Benötigte GitHub-Secrets
 
-## Deployment (GitHub Actions + FTP)
-
-Der Workflow `.github/workflows/inca.yml` installiert die Abhängigkeiten, führt
-`python build.py` aus und lädt `./site/` per FTP hoch. Benötigte
-**Repository-Secrets** (Settings → Secrets and variables → Actions):
-
-| Secret | Bedeutung |
-|--------|-----------|
-| `FTP_SERVER` | FTP-Host (z. B. `3db.ch`) |
+| Secret | Zweck |
+|---|---|
+| `FTP_SERVER` | FTP-Host |
 | `FTP_USERNAME` | FTP-Benutzer |
 | `FTP_PASSWORD` | FTP-Passwort |
-| `FTP_SERVER_DIR` | Zielverzeichnis (z. B. `/eigermaker.ch/radar/`) |
+| `FTP_SERVER_DIR` | Zielverzeichnis auf dem Server |
+| `METEOFRANCE_TOKEN` | **Dauerhafter** Météo-France API-Key (für AROME) |
 
-Manuell auslösen: Tab **Actions** → Workflow → **Run workflow**.
+**Météo-France API-Key:** Im Portal https://portail-api.meteofrance.fr das
+„AROME-Modell (v1.0)" (mit WCS) abonnieren → „Générer Token" → Typ **API Key** mit
+Dauer **0** (läuft nicht ab) → den langen Schlüssel als Secret `METEOFRANCE_TOKEN`
+hinterlegen. Der Code hängt ihn als Header `apikey` an jede WCS-Anfrage; eine
+Token-Erneuerung ist nicht nötig.
+
+Im Workflow muss der Build-Schritt das Secret durchreichen:
+
+    - name: Radardaten holen und Karten bauen
+      env:
+        METEOFRANCE_TOKEN: ${{ secrets.METEOFRANCE_TOKEN }}
+      run: python build.py
 
 ---
 
-## Konfiguration (Umgebungsvariablen)
+## Einstellbare Variablen (Umgebungsvariablen)
 
-Alle optional, mit sinnvollen Standardwerten:
+Alles hat sinnvolle Standardwerte; setzen ist optional (z. B. im Workflow unter `env:`).
 
 | Variable | Standard | Wirkung |
-|----------|----------|---------|
-| `RADAR_FRAMES` | `24` | Anzahl Radarbilder (~2 h bei 5-Min-Takt) |
-| `ICON_HOURS` | `30` | ICON-CH1 bis +X h (max. 33) |
-| `ICOND2_HOURS` | `12` | ICON-D2 (15-Min) bis +X h |
-| `BLEND_MIN` | `60` | Dauer der Radar-Verankerung der Vorhersage (Min) |
-| `FC_HOURS` | `24` | Stunden für den data4web-Rückfall |
-| `INCA_SITE` | `site` | Ausgabeverzeichnis |
-| `ICON_COLLECTION` | `ch.meteoschweiz.ogd-forecasting-icon-ch1` | ICON-CH1-STAC-Collection |
-| `DWD_ICOND2_BASE` | `https://opendata.dwd.de/weather/nwp/icon-d2/grib` | DWD-Basis-URL |
-| `INCA_STAC` | `https://data.geo.admin.ch/api/stac/v1` | STAC-API |
+|---|---|---|
+| `DISPLAY_FLOOR` | `0.3` | Anzeige-Untergrenze in mm/h; darunter transparent |
+| `AROME_W` | `1.0` | Grundgewicht von AROME im Mittel (kleiner = weniger Einfluss) |
+| `AROME_FEATHER_PX` | `25` | Breite des weichen AROME-Ostrands in Pixeln (~0,25°) |
+| `AROME_HOURS` | `12` | AROME-Vorhersage bis +X h |
+| `ICON_HOURS` | `30` | ICON-CH1-Vorhersage bis +X h (begrenzt die Zeitachse) |
+| `ICOND2_HOURS` | `12` | ICON-D2-Vorhersage bis +X h |
+| `BLEND_MIN` | `60` | Dauer der Radar-Verankerung der Vorhersage (Minuten) |
+| `RADAR_FRAMES` | `24` | Anzahl Radarbilder (Vergangenheit), 24 × 5 Min = 2 h |
+| `RADAR_COLLECTION` | `ch.meteoschweiz.ogd-radar-precip` | Radar-Datensatz |
+| `ICON_COLLECTION` | `ch.meteoschweiz.ogd-forecasting-icon-ch1` | ICON-CH1-Datensatz |
+| `AROME_VAR` | `TOTAL_PRECIPITATION__GROUND_OR_WATER_SURFACE` | AROME-Variable |
+| `INCA_STAC` | `https://data.geo.admin.ch/api/stac/v1` | MeteoSchweiz STAC-API |
+| `DWD_ICOND2_BASE` | `https://opendata.dwd.de/weather/nwp/icon-d2/grib` | DWD opendata |
 
 ---
 
-## Lokaler Test / Offline
+## Lokal testen
 
-Der Live-Abruf braucht offenes Internet (am besten im Actions-Runner). Lokal
-lassen sich die Renderer mit Beispieldateien prüfen:
+    pip install -r requirements.txt
+    export METEOFRANCE_TOKEN="…"   # für AROME (sonst läuft es ohne AROME mit CH1+D2)
+    python build.py                # erzeugt ./site/
+    # site/index.html im Browser öffnen
 
-```bash
-pip install -r requirements.txt
-python build.py --radar beispiel.h5 --fc beispiel.csv
-# Ergebnis in ./site/  (index.html im Browser öffnen)
-```
-
-`eccodes` benötigt die ecCodes-Bibliothek (über das Pip-Paket meist enthalten;
-unter Debian/Ubuntu sonst `apt install libeccodes0`).
+Hinweis: Der Build braucht echten Internetzugang zu data.geo.admin.ch,
+opendata.dwd.de und public-api.meteofrance.fr.
 
 ---
 
-## Datenquellen & Lizenzen
+## Lizenzen / Quellenangabe
 
-- **MeteoSchweiz** — Radar und ICON-CH1, Open Government Data, frei mit
-  Quellenangabe „Quelle: MeteoSchweiz".
-- **Deutscher Wetterdienst (DWD)** — ICON-D2, Open Data, **CC BY 4.0**,
-  Quellenangabe „Quelle: Deutscher Wetterdienst".
-- Kartenhintergrund: © OpenStreetMap-Mitwirkende, © CARTO.
+Pflichtangaben (im Viewer-Footer und in der Kartenattribution enthalten):
 
-Die Quellenangaben sind im Viewer (Kartenattribution und Untertitel) hinterlegt.
-
----
-
-## Grenzen & Ausblick
-
-- **Räumlich** ist 1 km (ICON-CH1) das offene Maximum für die ganze Schweiz —
-  feiner geht es derzeit frei nicht.
-- **5-Minuten-Vorhersage** wäre nur durch zeitliche Interpolation der 15-Min-
-  Schritte möglich (kosmetisch, keine echten Zusatzdaten). Echte 5-Min-Felder
-  liefert nur radar-/beobachtungsbasiertes Nowcasting.
-- **MeteoSchweiz-INCA-Nowcasting** (1 km / 5 Min, beobachtungsgestützt) wäre der
-  große Sprung in beiden Dimensionen — als offene Daten aber noch nicht
-  verfügbar (frühestens ~2026). Sobald freigegeben: idealer Ersatz für den
-  Nahbereich.
-- **Météo-France AROME** (1,3 km, 15 Min) könnte den Westen schärfen — deckt
-  aber nur die Westschweiz ab (Stufe 2).
+- **MeteoSchweiz** – „Quelle: MeteoSchweiz" (Radar, ICON-CH1)
+- **Deutscher Wetterdienst (DWD)** – CC BY 4.0, „Quelle: Deutscher Wetterdienst" (ICON-D2)
+- **Météo-France** – © Météo-France (AROME)
+- Karten: © OpenStreetMap, © CARTO
 
 ---
 
-*Privates Hobbyprojekt. Keine amtliche Wetterwarnung — im Ernstfall gelten die
-offiziellen Angaben von MeteoSchweiz.*
+## Ausblick (optional)
+
+- **INCA-Nowcasting (MeteoSchweiz, 1 km / 5 Min)**, sobald als Open Data verfügbar –
+  das wäre das eigentliche Qualitäts-Upgrade für die ersten Stunden.
+- 5-Minuten-Interpolation der Vorhersage (rein kosmetisch).
+- ICON-Ensemble-Mittel für noch mehr Fläche/Robustheit.
