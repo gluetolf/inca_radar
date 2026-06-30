@@ -78,7 +78,10 @@
   .errbox{max-width:380px;text-align:center;line-height:1.5}
   .spinner{width:34px;height:34px;border:3px solid #c3ccb6;border-top-color:var(--green);border-radius:50%;animation:spin .8s linear infinite;margin:0 auto 12px}
   @keyframes spin{to{transform:rotate(360deg)}}
-  @media (max-width:560px){.brand h1{font-size:13px}.brand .sub{display:none}.bigtime{font-size:17px}.speed{display:none}.map-tools{top:58px}}
+  @media (max-width:560px){.brand h1{font-size:13px}.brand .sub{display:none}.bigtime{font-size:17px}.map-tools{top:58px}
+    .row{flex-wrap:wrap}
+    .speed{flex-basis:100%;justify-content:center;margin-top:6px}
+    .speed button{padding:6px 12px;font-size:12px}}
 </style>
 </head>
 <body>
@@ -258,16 +261,17 @@
     document.getElementById('loading').style.display='none';
     show(loopStart); if(!playing) play();
   }
-  // Frische-Anzeige: wie lange ist der letzte Build her? Punkt gruen/gelb/rot.
+  // Frische-Anzeige: "Stand HH:MM · vor N Min" – beides bezieht sich auf DIESELBE Zeit
+  // (das juengste Radarbild), damit HH:MM + N Min = aktuelle Uhr ergibt. Punkt gruen/gelb/rot.
   var buildMs = 0, frameCount = 0;
   function updateStamp(){
     var el = document.getElementById('updated'); if(!el) return;
     var dot = document.querySelector('.status .live');
-    if(!buildMs){el.textContent='lädt…';return;}
-    var ageMin = Math.max(0, Math.round((Date.now() - buildMs) / 60000));
+    if(!nowMs){el.textContent='lädt…';return;}
+    var ageMin = Math.max(0, Math.round((Date.now() - nowMs) / 60000));
     var age = ageMin < 1 ? 'gerade aktualisiert' : ('vor ' + ageMin + ' Min');
     el.textContent = "Stand " + hm(new Date(nowMs)) + " · " + age;
-    if(dot) dot.style.background = ageMin > 40 ? '#d64545' : (ageMin > 20 ? '#e0a32e' : '');
+    if(dot) dot.style.background = ageMin > 45 ? '#d64545' : (ageMin > 25 ? '#e0a32e' : '');
   }
   function fail(msg){if(frames.length)return;document.getElementById('loadtext').innerHTML="⚠️ "+msg;}
   // Manifest laden (immer cache-frei: ?Zeitstempel + no-store)
