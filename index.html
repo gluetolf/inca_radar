@@ -16,6 +16,9 @@
   #map{position:absolute;inset:0;background:#dfe5d8;z-index:0}
   .city-label{background:none;border:none;box-shadow:none;font-weight:600;font-size:12px;color:#2c3422;
     text-shadow:0 0 3px #fff,0 0 3px #fff,0 0 6px #fff;white-space:nowrap;pointer-events:none}
+  .lake-label{background:none;border:none;box-shadow:none;font-style:italic;font-weight:500;font-size:12px;
+    color:#1b5a8c;letter-spacing:.5px;transform:translate(-50%,-50%);
+    text-shadow:0 0 3px #fff,0 0 3px #fff,0 0 6px #fff;white-space:nowrap;pointer-events:none}
   .city-dot{width:5px;height:5px;border-radius:50%;background:#2c3422;box-shadow:0 0 0 2px #fff;margin:0 auto 2px}
   .city-home .city-dot{background:var(--green);box-shadow:0 0 0 2px #fff,0 0 8px var(--green)}
   .city-home{color:var(--green-dark)}
@@ -307,6 +310,26 @@
     });
   }
   map.on('zoomend',updateCityZoom); updateCityZoom();
+  // ---- Seenamen: eigene Beschriftung (die Hintergrundkarte zeigt in der CH keine Labels) ----
+  var LAKES=[
+    ["Genfersee",46.43,6.52,8],["Neuenburgersee",46.91,6.86,8],["Vierwaldstättersee",47.00,8.43,8],["Zürichsee",47.22,8.69,8],
+    ["Thunersee",46.68,7.72,9],["Brienzersee",46.72,7.96,9],["Bielersee",47.08,7.17,9],["Zugersee",47.13,8.49,9],["Walensee",47.12,9.19,9],["Lago di Lugano",46.00,8.97,9],["Murtensee",46.93,7.08,9],["Sempachersee",47.14,8.15,9],["Hallwilersee",47.28,8.21,9],["Greifensee",47.35,8.68,9],["Sarnersee",46.87,8.23,9],["Lac de la Gruyère",46.66,7.10,9],
+    ["Ägerisee",47.12,8.63,10],["Sihlsee",47.13,8.78,10],["Pfäffikersee",47.345,8.785,10],["Baldeggersee",47.20,8.26,10],["Lungerersee",46.785,8.16,10],["Klöntalersee",47.025,8.99,10],["Wägitalersee",47.08,8.89,10],["Lac de Joux",46.62,6.27,10],["Silvaplanersee",46.45,9.79,10],["Silsersee",46.42,9.74,10],
+    ["Oeschinensee",46.50,7.73,11]
+  ];
+  var lakeMarkers=LAKES.map(function(l){
+    return {mz:l[3],m:L.marker([l[1],l[2]],{interactive:false,keyboard:false,icon:L.divIcon({
+      className:'lake-label',html:l[0],iconSize:[0,0],iconAnchor:[0,0]})})};
+  });
+  function updateLakeZoom(){
+    var z=map.getZoom();
+    lakeMarkers.forEach(function(o){
+      var on=map.hasLayer(o.m);
+      if(z>=o.mz && !on) o.m.addTo(map);
+      else if(z<o.mz && on) map.removeLayer(o.m);
+    });
+  }
+  map.on('zoomend',updateLakeZoom); updateLakeZoom();
   // Grosser Ortsdatensatz (eingebettet, ~4000 Orte) fuer die genaue Naechster-Ort-Anzeige.
   var PLACES=(window.PLACES&&window.PLACES.length)?window.PLACES:CITIES.map(function(c){return [c[0],c[1],c[2]];});
   var CLOSE_KM=3, FAR_KM=12;          // <=3 km: Ortschaft; <=12 km: Gemeinde; weiter: gar nichts
@@ -336,6 +359,9 @@
       if(occ[k]) return false; occ[k]=1; return true;
     }
     cityMarkers.forEach(function(o){                          // Plaetze sichtbarer Stadt-Labels blockieren
+      if(map.hasLayer(o.m)) take(map.latLngToContainerPoint(o.m.getLatLng()));
+    });
+    lakeMarkers.forEach(function(o){                          // ebenso die sichtbaren Seen-Labels
       if(map.hasLayer(o.m)) take(map.latLngToContainerPoint(o.m.getLatLng()));
     });
     var placed=0, MAX=500;                                    // reine Sicherheitsgrenze
