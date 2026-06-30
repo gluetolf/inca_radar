@@ -181,25 +181,28 @@
   }
   map.on('moveend',writeHash); writeHash();
   // Fadenkreuz-Modell: der angezeigte Wert gilt immer fuer die Kartenmitte (kein Tipp-Pin).
-  function refreshCenter(){ selLatLng=map.getCenter(); maybeFetchForeign(selLatLng); updateReadout(); }
+  function refreshCenter(){ selLatLng=map.getCenter(); maybeFetchPlace(selLatLng); updateReadout(); }
   map.on('moveend',refreshCenter);
-  // ---- Ortsname ausserhalb der Schweiz: per OpenStreetMap (Nominatim), erst beim Loslassen ----
-  var foreign={key:null,name:null,pending:false,seq:0,cache:{},timer:null};
+  // ---- Ortsname am Fadenkreuz: exakte Rueckwaerts-Geokodierung des Mittelpunkts (OpenStreetMap/Nominatim).
+  //      Liefert den Ort/Weiler, der GENAU an diesem Punkt liegt - nicht den naechsten Listenpunkt. In- und Ausland. ----
+  var rgeo={key:null,name:null,pending:false,seq:0,cache:{},timer:null};
   function keyFor(ll){return ll.lat.toFixed(3)+','+ll.lng.toFixed(3);}        // ~100-m-Raster fuer Cache
-  function maybeFetchForeign(ll){
-    if(nearestCity(ll)){foreign.key=null;foreign.pending=false;return;}        // lokaler CH-Ort vorhanden -> nichts holen
-    var key=keyFor(ll); foreign.key=key;
-    if(key in foreign.cache){foreign.name=foreign.cache[key];foreign.pending=false;return;} // schon bekannt
-    foreign.name=null; foreign.pending=true; clearTimeout(foreign.timer);
-    var seq=++foreign.seq;
-    foreign.timer=setTimeout(function(){                                       // erst nach kurzer Ruhe abfragen
-      var url='https://nominatim.openstreetmap.org/reverse?format=jsonv2&zoom=10&accept-language=de&lat='+ll.lat+'&lon='+ll.lng;
+  function pickName(a,j){                                                      // feinste sinnvolle Ebene zuerst
+    return a.village||a.hamlet||a.isolated_dwelling||a.town||a.suburb||a.quarter
+         ||a.neighbourhood||a.city_district||a.city||a.municipality||a.locality||a.county||(j&&j.name)||null;
+  }
+  function maybeFetchPlace(ll){
+    var key=keyFor(ll); rgeo.key=key;
+    if(key in rgeo.cache){rgeo.name=rgeo.cache[key];rgeo.pending=false;return;} // schon bekannt
+    rgeo.name=null; rgeo.pending=true; clearTimeout(rgeo.timer);
+    var seq=++rgeo.seq;
+    rgeo.timer=setTimeout(function(){                                          // erst nach kurzer Ruhe abfragen (Nominatim-Policy)
+      var url='https://nominatim.openstreetmap.org/reverse?format=jsonv2&zoom=14&accept-language=de&lat='+ll.lat+'&lon='+ll.lng;
       fetch(url,{headers:{'Accept':'application/json'}}).then(function(r){return r.json();}).then(function(j){
-        if(seq!==foreign.seq)return;                                           // Karte wurde weiterbewegt -> verwerfen
-        var a=(j&&j.address)||{};
-        var nm=a.village||a.town||a.city||a.municipality||a.hamlet||a.suburb||a.county||(j&&j.name)||null;
-        foreign.cache[key]=nm; if(foreign.key===key){foreign.name=nm;foreign.pending=false;updateReadout();}
-      }).catch(function(){if(seq===foreign.seq){foreign.pending=false;updateReadout();}});
+        if(seq!==rgeo.seq)return;                                              // Karte wurde weiterbewegt -> verwerfen
+        var nm=pickName((j&&j.address)||{},j);
+        rgeo.cache[key]=nm; if(rgeo.key===key){rgeo.name=nm;rgeo.pending=false;updateReadout();}
+      }).catch(function(){if(seq===rgeo.seq){rgeo.pending=false;updateReadout();}});
     },650);
   }
   map.attributionControl.setPrefix(false);
@@ -259,7 +262,7 @@
       toast('Dein Browser unterstützt keine Standortbestimmung.',6000);return;}
     navigator.geolocation.getCurrentPosition(function(pos){
       var ll=L.latLng(pos.coords.latitude,pos.coords.longitude);
-      map.setView(ll,9);                        // auf den Standort zentrieren; Fadenkreuz = Mitte
+      map.setView(ll, Math.max(map.getZoom(),9)); // zentrieren, Zoom nie verkleinern (nur ggf. hinein)
       document.getElementById('toast').style.display='none';
       btn.classList.remove('on');
     },function(err){                            // Fehler: je nach Ursache passender Hinweis
@@ -560,11 +563,8 @@
     // Punkt-Anzeige
     if(!selLatLng){chip.style.display='none';return;}
     chip.style.display='flex';
-    var nc=nearestCity(selLatLng);                            // Ortschaft (nah), Gemeinde (weiter) oder null
-    var loc='';
-    if(nc){ loc = nc.gem ? nc.name                            // Gemeinde: nur Name (Flaeche, keine Distanz)
-                         : (nc.km<1.2 ? nc.name : nc.name+' · '+Math.round(nc.km)+' km'); }
-    else if(foreign.key===keyFor(selLatLng)){ loc = foreign.name || (foreign.pending?'…':''); } // Ausland
+    var loc='';                                              // Ortsname = exakte Rueckwaerts-Geokodierung des Punkts
+    if(rgeo.key===keyFor(selLatLng)){ loc = rgeo.name || (rgeo.pending?'…':''); }
     document.getElementById('pcloc').textContent = loc ? loc+' ·' : '';
     document.getElementById('pccoord').textContent = coordText(selLatLng);   // CH95 bzw. WGS84
     var k=sampleAt(idx,selLatLng),sw=document.getElementById('pcsw'),val=document.getElementById('pcval');
