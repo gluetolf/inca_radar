@@ -73,8 +73,10 @@ def build(local_radar=None, local_fc=None, local_icon_dir=None):
             if not src:
                 continue
             try:
-                fn = f"r{i:02d}.png"
-                when, mx = c.render_radar(src, os.path.join(OUT, fn))
+                tmp_png = os.path.join(OUT, f"_r{i:02d}.png")
+                when, mx = c.render_radar(src, tmp_png)
+                fn = "r_" + when.strftime("%Y%m%dT%H%MZ") + ".png"   # stabiler Name je Messzeit
+                os.replace(tmp_png, os.path.join(OUT, fn))
                 rendered.append((when, fn, mx)); radar_src[when] = src
             except Exception as e:
                 print("  Radarbild uebersprungen:", e)
@@ -211,7 +213,7 @@ def build(local_radar=None, local_fc=None, local_icon_dir=None):
                     field = np.where(overlap, w * last_radar + (1 - w) * field, field)
                     anchored += 1
             # einfaerben, als PNG speichern, Frame vermerken
-            fn = f"f{n:02d}.png"
+            fn = "f_" + t.strftime("%Y%m%dT%H%MZ") + ".png"   # stabiler Name je Gueltigkeitszeit
             Image.fromarray(c.colorize(field), "RGBA").save(os.path.join(OUT, fn))
             mxv = np.nanmax(field)
             mx = round(float(mxv), 1) if np.isfinite(mxv) else 0.0   # fuer den "trocken"-Hinweis
@@ -256,7 +258,7 @@ def build(local_radar=None, local_fc=None, local_icon_dir=None):
             wet = 0
             for i, t in enumerate(times):
                 lons, lats, vals = fc[t]
-                fn = f"f{i:02d}.png"
+                fn = "f_" + t.strftime("%Y%m%dT%H%MZ") + ".png"   # stabiler Name je Gueltigkeitszeit
                 mx = c.render_forecast(lons, lats, vals, os.path.join(OUT, fn))
                 if mx > 0:
                     wet += 1
