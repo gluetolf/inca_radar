@@ -187,8 +187,11 @@
   //      Liefert den Ort/Weiler, der GENAU an diesem Punkt liegt - nicht den naechsten Listenpunkt. In- und Ausland. ----
   var rgeo={key:null,name:null,pending:false,seq:0,cache:{},timer:null};
   function keyFor(ll){return ll.lat.toFixed(3)+','+ll.lng.toFixed(3);}        // ~100-m-Raster fuer Cache
-  function pickName(a,j){                                                      // feinste sinnvolle Ebene zuerst
-    return a.village||a.hamlet||a.isolated_dwelling||a.town||a.suburb||a.quarter
+  function pickName(a,j){
+    var stadt    = a.city || a.town || a.municipality;
+    var quartier = a.suburb || a.quarter || a.neighbourhood || a.city_district || a.borough;
+    if(stadt && quartier && quartier!==stadt) return stadt+' '+quartier;       // z.B. "Zürich Wiedikon"
+    return a.village||a.hamlet||a.isolated_dwelling||a.town||a.suburb||a.quarter // sonst feinste sinnvolle Ebene
          ||a.neighbourhood||a.city_district||a.city||a.municipality||a.locality||a.county||(j&&j.name)||null;
   }
   function maybeFetchPlace(ll){
