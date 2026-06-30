@@ -61,13 +61,15 @@
   .speed{display:flex;gap:4px;align-items:center}
   .speed button{font-size:11px;font-weight:600;color:var(--muted);background:none;border:none;cursor:pointer;padding:4px 7px;border-radius:7px}
   .speed button.on{background:var(--green);color:#fff}
-  .pointchip{position:absolute;top:60px;left:50%;transform:translateX(-50%);z-index:500;display:none;align-items:center;gap:8px;
-    background:var(--panel);backdrop-filter:blur(8px);border:1px solid var(--panel-line);border-radius:999px;box-shadow:var(--shadow);
-    padding:7px 14px;font-size:13px;color:var(--ink);white-space:nowrap;max-width:92vw}
-  .pointchip .pc-loc{color:var(--muted);display:inline-block;min-width:118px;text-align:right}
-  .pointchip .pc-val{font-weight:700;display:inline-block;min-width:142px;text-align:left}
+  .pointchip{position:absolute;top:60px;left:50%;transform:translateX(-50%);z-index:500;display:none;
+    flex-direction:column;align-items:center;gap:2px;min-width:200px;
+    background:var(--panel);backdrop-filter:blur(8px);border:1px solid var(--panel-line);border-radius:14px;box-shadow:var(--shadow);
+    padding:7px 16px;font-size:13px;color:var(--ink);white-space:nowrap;max-width:92vw}
+  .pointchip .pc-top{display:flex;align-items:center;gap:8px;justify-content:center}
+  .pointchip .pc-loc{color:var(--muted)}
+  .pointchip .pc-val{font-weight:700}
   .pointchip .pc-sw{width:12px;height:12px;border-radius:3px;border:1px solid rgba(0,0,0,.15);flex:none}
-  .pointchip .pc-x{cursor:pointer;color:var(--muted);font-weight:700;margin-left:4px}
+  .pointchip .pc-coord{font-size:11px;color:var(--muted);letter-spacing:.2px;font-variant-numeric:tabular-nums}
   .drybadge{position:absolute;top:54%;left:50%;transform:translate(-50%,-50%);z-index:450;display:none;pointer-events:none;
     background:rgba(255,255,255,.82);backdrop-filter:blur(6px);border:1px solid var(--panel-line);border-radius:12px;
     box-shadow:var(--shadow);padding:7px 15px;font-size:13px;font-weight:600;color:var(--muted)}
@@ -110,8 +112,8 @@
   <button id="homeBtn" title="Auf meinen Standort zentrieren">⌖</button>
 </div>
 <div class="pointchip" id="pointchip">
-  <span class="pc-sw" id="pcsw"></span><span class="pc-loc" id="pcloc"></span>
-  <span class="pc-val" id="pcval"></span>
+  <div class="pc-top"><span class="pc-sw" id="pcsw"></span><span class="pc-loc" id="pcloc"></span><span class="pc-val" id="pcval"></span></div>
+  <div class="pc-coord" id="pccoord"></div>
 </div>
 <div class="drybadge" id="drybadge">kein Niederschlag erwartet</div>
 <div class="toast" id="toast"></div>
@@ -146,8 +148,27 @@
   var map=L.map('map',{center:SWISS,zoom:Z,minZoom:6,maxZoom:11,zoomControl:false}).setView(SWISS,Z);
   L.control.zoom({position:'bottomright'}).addTo(map);
   // Fadenkreuz-Modell: der angezeigte Wert gilt immer fuer die Kartenmitte (kein Tipp-Pin).
-  function refreshCenter(){ selLatLng=map.getCenter(); updateReadout(); }
+  function refreshCenter(){ selLatLng=map.getCenter(); maybeFetchForeign(selLatLng); updateReadout(); }
   map.on('moveend',refreshCenter);
+  // ---- Ortsname ausserhalb der Schweiz: per OpenStreetMap (Nominatim), erst beim Loslassen ----
+  var foreign={key:null,name:null,pending:false,seq:0,cache:{},timer:null};
+  function keyFor(ll){return ll.lat.toFixed(3)+','+ll.lng.toFixed(3);}        // ~100-m-Raster fuer Cache
+  function maybeFetchForeign(ll){
+    if(nearestCity(ll)){foreign.key=null;foreign.pending=false;return;}        // lokaler CH-Ort vorhanden -> nichts holen
+    var key=keyFor(ll); foreign.key=key;
+    if(key in foreign.cache){foreign.name=foreign.cache[key];foreign.pending=false;return;} // schon bekannt
+    foreign.name=null; foreign.pending=true; clearTimeout(foreign.timer);
+    var seq=++foreign.seq;
+    foreign.timer=setTimeout(function(){                                       // erst nach kurzer Ruhe abfragen
+      var url='https://nominatim.openstreetmap.org/reverse?format=jsonv2&zoom=10&accept-language=de&lat='+ll.lat+'&lon='+ll.lng;
+      fetch(url,{headers:{'Accept':'application/json'}}).then(function(r){return r.json();}).then(function(j){
+        if(seq!==foreign.seq)return;                                           // Karte wurde weiterbewegt -> verwerfen
+        var a=(j&&j.address)||{};
+        var nm=a.village||a.town||a.city||a.municipality||a.hamlet||a.suburb||a.county||(j&&j.name)||null;
+        foreign.cache[key]=nm; if(foreign.key===key){foreign.name=nm;foreign.pending=false;updateReadout();}
+      }).catch(function(){if(seq===foreign.seq){foreign.pending=false;updateReadout();}});
+    },650);
+  }
   map.attributionControl.setPrefix(false);
   var LIGHT="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png";
   var DARK ="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png";
@@ -390,6 +411,20 @@
         if(e<bd){bd=e;best=k;}}return best;
     }catch(err){return -1;} // Pixel nicht lesbar
   }
+  // ---- Koordinaten: in/nahe der Schweiz LV95 (CH95), sonst WGS84 ----
+  function toLV95(lat,lng){
+    var p=(lat*3600-169028.66)/10000, l=(lng*3600-26782.5)/10000;
+    var E=2600072.37 + 211455.93*l - 10938.51*l*p - 0.36*l*p*p - 44.54*l*l*l;
+    var N=1200147.07 + 308807.95*p + 3745.25*l*l + 76.63*p*p - 194.56*l*l*p + 119.79*p*p*p;
+    return [E,N];
+  }
+  function grp(n){return Math.round(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g,'\u2019');} // 1234567 -> 1'234'567
+  function coordText(ll){
+    if(ll.lat>=45.5&&ll.lat<=48.0&&ll.lng>=5.5&&ll.lng<=11.0){      // in/nahe der Schweiz -> LV95 (CH95)
+      var c=toLV95(ll.lat,ll.lng); return 'E '+grp(c[0])+'   N '+grp(c[1]);
+    }
+    return ll.lat.toFixed(4)+'°, '+ll.lng.toFixed(4)+'°';            // ausserhalb -> WGS84
+  }
   function updateReadout(){
     var dry=document.getElementById('drybadge'),chip=document.getElementById('pointchip');
     // Trocken-Hinweis: aktuelles Bild ohne Niederschlag
@@ -404,9 +439,11 @@
     var loc='';
     if(nc){ loc = nc.gem ? nc.name                            // Gemeinde: nur Name (Flaeche, keine Distanz)
                          : (nc.km<1.2 ? nc.name : nc.name+' · '+Math.round(nc.km)+' km'); }
+    else if(foreign.key===keyFor(selLatLng)){ loc = foreign.name || (foreign.pending?'…':''); } // Ausland
     document.getElementById('pcloc').textContent = loc ? loc+' ·' : '';
+    document.getElementById('pccoord').textContent = coordText(selLatLng);   // CH95 bzw. WGS84
     var k=sampleAt(idx,selLatLng),sw=document.getElementById('pcsw'),val=document.getElementById('pcval');
-    if(k===undefined){sw.style.background='transparent';sw.style.borderColor='transparent';val.textContent='ausserhalb';}
+    if(k===undefined){sw.style.background='transparent';sw.style.borderColor='transparent';val.textContent='—';}
     else if(k===-1){sw.style.background='transparent';sw.style.borderColor='transparent';val.textContent='—';}
     else if(k===null){sw.style.background='transparent';sw.style.borderColor='rgba(0,0,0,.15)';val.textContent='kein Niederschlag';}
     else{var c=SCALE_JS[k][1];sw.style.background='rgb('+c[0]+','+c[1]+','+c[2]+')';sw.style.borderColor='rgba(0,0,0,.15)';val.textContent=rangeText(k);}
