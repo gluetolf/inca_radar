@@ -143,11 +143,12 @@
     var btn=this; btn.classList.add('on');
     if(!navigator.geolocation){map.setView(SWISS,Z);btn.classList.remove('on');return;}
     navigator.geolocation.getCurrentPosition(function(pos){
-      var ll=[pos.coords.latitude,pos.coords.longitude];
+      var ll=L.latLng(pos.coords.latitude,pos.coords.longitude);
       map.setView(ll,9);                        // Zoom 9 = etwas Umgebung sichtbar
       if(locMarker)locMarker.setLatLng(ll);
       else locMarker=L.marker(ll,{interactive:false,keyboard:false,zIndexOffset:1000,
         icon:L.divIcon({className:'loc-marker',html:'<div></div>',iconSize:[16,16],iconAnchor:[8,8]})}).addTo(map);
+      selLatLng=ll; updateReadout();            // naechsten Ort + Niederschlag am Standort zeigen
       btn.classList.remove('on');
     },function(){map.setView(SWISS,Z);btn.classList.remove('on');},   // abgelehnt -> Schweiz
     {enableHighAccuracy:true,timeout:8000,maximumAge:60000});
@@ -159,12 +160,36 @@
     location.replace(location.pathname+'?r='+Date.now());
   };
 
-  // ---- Stadtmarkierungen (Interlaken hervorgehoben) ----
-  [["Zürich",47.376,8.541],["Bern",46.948,7.447],["Basel",47.559,7.588],["Genf",46.204,6.143],
-   ["Lausanne",46.519,6.633],["Luzern",47.050,8.306],["St. Gallen",47.424,9.376],["Lugano",46.004,8.951],
-   ["Chur",46.851,9.532],["Sion",46.233,7.360],["Interlaken",46.686,7.863,true]
-  ].forEach(function(c){L.marker([c[1],c[2]],{interactive:false,keyboard:false,icon:L.divIcon({
-     className:'city-label'+(c[3]?' city-home':''),html:'<div class="city-dot"></div>'+c[0],iconSize:[0,0],iconAnchor:[0,0]})}).addTo(map);});
+  // ---- Ortsmarkierungen: [Name, Breite, Laenge, ab welcher Zoomstufe sichtbar] ----
+  // Grosse Staedte ab Zoom 6, mittlere ab 7/8, kleine Orte erst beim Hineinzoomen (9).
+  var CITIES=[
+    ["Zürich",47.376,8.541,6],["Genf",46.204,6.143,6],["Basel",47.559,7.588,6],["Bern",46.948,7.447,6],["Lausanne",46.519,6.633,6],
+    ["Luzern",47.050,8.306,7],["St. Gallen",47.424,9.376,7],["Lugano",46.004,8.951,7],["Chur",46.851,9.532,7],["Winterthur",47.500,8.724,7],["Sion",46.233,7.360,7],
+    ["Fribourg",46.806,7.161,8],["Neuchâtel",46.992,6.931,8],["Biel",47.137,7.247,8],["Thun",46.758,7.628,8],["Bellinzona",46.195,9.027,8],["Zug",47.166,8.517,8],["Davos",46.800,9.836,8],["Montreux",46.433,6.911,8],
+    ["Locarno",46.171,8.799,9],["Schaffhausen",47.697,8.635,9],["Aarau",47.391,8.045,9],["Solothurn",47.208,7.538,9],["Brig",46.316,7.988,9],["Interlaken",46.686,7.863,9],["Bulle",46.619,7.057,9],["La Chaux-de-Fonds",47.100,6.825,9],["Rapperswil",47.226,8.818,9],["Frauenfeld",47.556,8.896,9],["Olten",47.350,7.904,9],["Burgdorf",47.060,7.624,9],["Zofingen",47.288,7.946,9],
+    ["Spiez",46.686,7.680,10],["Brienz",46.755,8.038,10],["Meiringen",46.727,8.186,10],["Grindelwald",46.624,8.034,10],["Lauterbrunnen",46.593,7.909,10],["Wengen",46.605,7.922,10],["Zermatt",46.020,7.749,10],["Andermatt",46.635,8.594,10],["Visp",46.294,7.881,10],["Engelberg",46.821,8.405,10],["Gstaad",46.472,7.286,10],["Adelboden",46.493,7.561,10],["Kandersteg",46.497,7.673,10],["Arosa",46.783,9.680,10],["Saas-Fee",46.109,7.929,10],["Crans-Montana",46.308,7.481,10]
+  ];
+  var cityMarkers=CITIES.map(function(c){
+    return {mz:c[3],m:L.marker([c[1],c[2]],{interactive:false,keyboard:false,icon:L.divIcon({
+      className:'city-label',html:'<div class="city-dot"></div>'+c[0],iconSize:[0,0],iconAnchor:[0,0]})})};
+  });
+  function updateCityZoom(){                                  // je nach Zoom Orte ein-/ausblenden
+    var z=map.getZoom();
+    cityMarkers.forEach(function(o){
+      var on=map.hasLayer(o.m);
+      if(z>=o.mz && !on) o.m.addTo(map);
+      else if(z<o.mz && on) map.removeLayer(o.m);
+    });
+  }
+  map.on('zoomend',updateCityZoom); updateCityZoom();
+  // Naechstgelegenen Ort zu einem Punkt finden (Naeherungsdistanz in km)
+  function nearestCity(ll){
+    var best=null,bd=1e9;
+    for(var i=0;i<CITIES.length;i++){var c=CITIES[i];
+      var dx=(ll.lng-c[2])*Math.cos(c[1]*Math.PI/180)*111.32, dy=(ll.lat-c[1])*110.57;
+      var d=Math.sqrt(dx*dx+dy*dy); if(d<bd){bd=d;best=c;}}
+    return best?{name:best[0],km:bd}:null;
+  }
 
   // ---- Zustand der Animation ----
   var frames=[],bounds=null,overlays=[],idx=0,playing=false,timer=null,speed=350,refId=null,nowIdx=0,nowMs=0,loopStart=0,
@@ -321,7 +346,10 @@
     // Punkt-Anzeige
     if(!selLatLng){chip.style.display='none';return;}
     chip.style.display='flex';
-    document.getElementById('pcloc').textContent=selLatLng.lat.toFixed(3)+'°, '+selLatLng.lng.toFixed(3)+'° ·';
+    var nc=nearestCity(selLatLng);                            // naechstgelegener Ort
+    var loc = nc ? (nc.km<1.2 ? nc.name : nc.name+' · '+Math.round(nc.km)+' km')
+                 : (selLatLng.lat.toFixed(3)+'°, '+selLatLng.lng.toFixed(3)+'°');
+    document.getElementById('pcloc').textContent=loc+' ·';
     var k=sampleAt(idx,selLatLng),sw=document.getElementById('pcsw'),val=document.getElementById('pcval');
     if(k===undefined){sw.style.background='transparent';sw.style.borderColor='transparent';val.textContent='ausserhalb';}
     else if(k===-1){sw.style.background='transparent';sw.style.borderColor='transparent';val.textContent='—';}
@@ -329,6 +357,7 @@
     else{var c=SCALE_JS[k][1];sw.style.background='rgb('+c[0]+','+c[1]+','+c[2]+')';sw.style.borderColor='rgba(0,0,0,.15)';val.textContent=rangeText(k);}
   }
   map.on('click',function(e){selLatLng=e.latlng;
+    map.panTo(e.latlng);                                      // auf den getippten Punkt zentrieren
     if(selMarker)selMarker.setLatLng(e.latlng);
     else selMarker=L.marker(e.latlng,{interactive:false,keyboard:false,icon:L.divIcon({className:'sel-marker',html:'<div></div>',iconSize:[14,14],iconAnchor:[7,7]})}).addTo(map);
     updateReadout();});
