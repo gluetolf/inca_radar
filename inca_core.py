@@ -49,13 +49,13 @@ BOUNDS = [[DST_S, DST_W], [DST_N, DST_E]]              # fuer Leaflet (imageOver
 SCALE = [
     (0.05, (165, 215, 255, 150)),
     (0.3,  (110, 175, 248, 170)),
-    (1.0,  (45,  110, 225, 188)),
-    (2.0,  (40,  180, 170, 200)),
-    (5.0,  (95,  200,  80, 210)),
-    (10.0, (230, 215,  70, 220)),
-    (20.0, (240, 150,  55, 228)),
-    (50.0, (225,  55,  50, 238)),
-    (1e9,  (170,  25, 110, 246)),
+    (1.0,  (45,  110, 225, 230)),
+    (2.0,  (40,  180, 170, 234)),
+    (5.0,  (95,  200,  80, 238)),
+    (10.0, (230, 215,  70, 240)),
+    (20.0, (240, 150,  55, 244)),
+    (50.0, (225,  55,  50, 248)),
+    (1e9,  (170,  25, 110, 252)),
 ]
 
 # Anzeige-Untergrenze (mm/h): leichter Niederschlag darunter wird NICHT eingefaerbt,
@@ -65,7 +65,7 @@ DISPLAY_FLOOR = float(os.environ.get("DISPLAY_FLOOR", "0.3"))
 
 # Weicher Rand gegen "ausgefranste" Kanten: oberhalb der Untergrenze die Deckkraft ueber
 # dieses Band (mm/h) sanft von 0 auf voll einblenden, statt hart abzuschneiden.
-EDGE_FADE = float(os.environ.get("EDGE_FADE", "0.5"))
+EDGE_FADE = float(os.environ.get("EDGE_FADE", "0.12"))
 
 
 def colorize(arr):
