@@ -22,6 +22,7 @@ import os, sys, glob, json, shutil, tempfile, datetime as dt
 import warnings
 warnings.filterwarnings("ignore", message="Mean of empty slice")
 warnings.filterwarnings("ignore", message="invalid value encountered")
+import concurrent.futures as cf
 import inca_core as c
 
 OUT = os.environ.get("INCA_SITE", "site")
@@ -53,9 +54,25 @@ def build(local_radar=None, local_fc=None, local_icon_dir=None):
             assets = c.radar_latest_assets(RADAR_FRAMES)        # die letzten N 5-Min-Bilder
             print(f"Radar-Assets gefunden: {len(assets)}")
         rendered = []; radar_src = {}                           # radar_src: Zeit -> Quelldatei
-        for i, (dtime, href) in enumerate(assets):
+        # Quelldateien PARALLEL herunterladen (reines Netzwerk), danach seriell rendern (h5py).
+        def _dl(item):
+            i, (dtime, href) = item
             try:
-                src = href if os.path.exists(str(href)) else c.download(href, os.path.join(tmp, f"r{i}.h5"))
+                if os.path.exists(str(href)):
+                    return i, href
+                return i, c.download(href, os.path.join(tmp, f"r{i}.h5"))
+            except Exception as e:
+                print("  Radar-Download uebersprungen:", e); return i, None
+        src_by_i = {}
+        if assets:
+            with cf.ThreadPoolExecutor(max_workers=min(12, len(assets))) as ex:
+                for i, src in ex.map(_dl, list(enumerate(assets))):
+                    src_by_i[i] = src
+        for i, (dtime, href) in enumerate(assets):
+            src = src_by_i.get(i)
+            if not src:
+                continue
+            try:
                 fn = f"r{i:02d}.png"
                 when, mx = c.render_radar(src, os.path.join(OUT, fn))
                 rendered.append((when, fn, mx)); radar_src[when] = src
@@ -89,19 +106,40 @@ def build(local_radar=None, local_fc=None, local_icon_dir=None):
         if local_icon_dir:
             raise RuntimeError("lokaler ICON-Test nicht implementiert")
         # Alle Modelle unabhaengig holen. Faellt eines aus, bleiben die anderen -> Fallback.
+        # Die drei Modelle sind unabhaengig -> PARALLEL in eigenen Prozessen holen
+        # (eigene Temp-Unterordner; Prozesse statt Threads, da eccodes nicht threadsicher).
+        # Faellt eines aus, bleiben die anderen; bei Parallel-Problemen seriell nachholen.
         ch1, d2, arome = {}, {}, {}      # je {Zeit: Raster mm/h}
+        d_ch1 = os.path.join(tmp, "ch1"); d_d2 = os.path.join(tmp, "d2"); d_ar = os.path.join(tmp, "arome")
+        for d in (d_ch1, d_d2, d_ar):
+            os.makedirs(d, exist_ok=True)
+        specs = [("ICON-CH1", c.icon_ch1_fields, d_ch1, ICON_HOURS),
+                 ("ICON-D2",  c.icond2_fields,  d_d2,  ICOND2_HOURS),
+                 ("AROME",    c.arome_fields,   d_ar,  AROME_HOURS)]
+        res = {}
+        t_models = dt.datetime.now()
         try:
-            ch1 = c.icon_ch1_fields(tmp, max_hours=ICON_HOURS, now=now)
+            with cf.ProcessPoolExecutor(max_workers=3) as ex:
+                futs = {ex.submit(fn, d, h, now): name for name, fn, d, h in specs}
+                for fut in cf.as_completed(futs):
+                    name = futs[fut]
+                    try:
+                        res[name] = fut.result()
+                    except Exception as e:
+                        import traceback; traceback.print_exc(); print(name, "fehlgeschlagen:", e)
         except Exception as e:
-            import traceback; traceback.print_exc(); print("ICON-CH1 fehlgeschlagen:", e)
-        try:
-            d2 = c.icond2_fields(tmp, max_hours=ICOND2_HOURS, now=now)
-        except Exception as e:
-            import traceback; traceback.print_exc(); print("ICON-D2 fehlgeschlagen:", e)
-        try:
-            arome = c.arome_fields(tmp, max_hours=AROME_HOURS, now=now)
-        except Exception as e:
-            import traceback; traceback.print_exc(); print("AROME fehlgeschlagen:", e)
+            import traceback; traceback.print_exc(); print("Parallel-Abruf nicht moeglich:", e)
+        if sum(len(v) for v in res.values()) == 0:          # Rueckfall: seriell, falls parallel nichts kam
+            for name, fn, d, h in specs:
+                try:
+                    res[name] = fn(d, h, now)
+                except Exception as e:
+                    import traceback; traceback.print_exc(); print(name, "fehlgeschlagen:", e)
+        ch1   = res.get("ICON-CH1", {}) or {}
+        d2    = res.get("ICON-D2",  {}) or {}
+        arome = res.get("AROME",    {}) or {}
+        print(f"Modelle geholt in {(dt.datetime.now()-t_models).total_seconds():.0f}s "
+              f"(CH1={len(ch1)}, D2={len(d2)}, AROME={len(arome)})")
 
         # CH1 und AROME sind stuendlich -> linear auf die 15-Min-Schritte interpolieren,
         # damit jeder Schritt denselben Charakter hat (kein "Pulsieren").
