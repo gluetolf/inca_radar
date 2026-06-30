@@ -1,19 +1,16 @@
 # =============================================================================
 # inca.yml  –  GitHub-Actions-Workflow fuer das Niederschlagsradar
 #
-# Ablauf: Ein externer Dienst (cron-job.org) stoesst diesen Workflow ueber die
-# GitHub-API an (workflow_dispatch). GitHub startet dann einen frischen
-# Cloud-Rechner, laesst build.py laufen (erzeugt ./site/) und schiebt das Ergebnis
-# per FTP auf den Webspace. Danach wird der Rechner weggeworfen.
-# Ablageort im Repo: .github/workflows/inca.yml
-#
-# Hinweis: Es gibt hier KEINEN "schedule"-Block mehr. Der Takt kommt von cron-job.org.
+# Ablauf: cron-job.org stoesst diesen Workflow ueber die GitHub-API an
+# (workflow_dispatch). GitHub baut mit build.py den Ordner ./site/ und laedt ihn
+# per FTP (lftp, parallel) auf METAhost. Ablageort: .github/workflows/inca.yml
+# Kein "schedule"-Block: der Takt kommt von cron-job.org.
 # =============================================================================
 
-name: INCA Radar aktualisieren        # Anzeigename im Tab "Actions"
+name: INCA Radar aktualisieren
 
 on:
-  workflow_dispatch:                  # per API (cron-job.org) ODER "Run workflow"-Knopf
+  workflow_dispatch:
 
 concurrency:
   group: inca-build
@@ -24,31 +21,25 @@ jobs:
     runs-on: ubuntu-latest
     steps:
 
-      # 1) Repo-Code holen
       - name: Code holen
         uses: actions/checkout@v4
 
-      # 2) Python bereitstellen (mit pip-Cache)
       - name: Python einrichten
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
           cache: pip
 
-      # 3) Bibliotheken installieren
       - name: Abhaengigkeiten installieren
         run: pip install -r requirements.txt
 
-      # 4) Karten bauen -> ./site/   (METEOFRANCE_TOKEN aus Secrets fuer AROME)
       - name: Radardaten holen und Karten bauen
         env:
           METEOFRANCE_TOKEN: ${{ secrets.METEOFRANCE_TOKEN }}
         run: python build.py
 
-      # 5) ./site/ per FTP hochladen - PARALLEL mit lftp (mehrere Dateien gleichzeitig).
-      #    Deutlich schneller als Einzel-Upload bei den vielen kleinen PNGs.
-      #    Zugangsdaten kommen aus den Secrets, landen nur in einer temporaeren
-      #    Skriptdatei und werden danach geloescht.
+      # ./site/ per FTP hochladen - parallel mit lftp, robust gegen kurze Server-Aussetzer:
+      # wenige parallele Verbindungen, geduldige Wiederverbindung, und bis zu 3 Gesamtversuche.
       - name: Per FTP auf METAhost laden (parallel, lftp)
         env:
           FTP_SERVER:     ${{ secrets.FTP_SERVER }}
@@ -62,16 +53,26 @@ jobs:
           set ftp:ssl-protect-data true
           set ssl:verify-certificate no
           set ftp:passive-mode true
-          set net:max-retries 3
-          set net:timeout 25
-          set mirror:parallel-transfer-count 6
+          set net:connection-limit 3
+          set net:max-retries 5
+          set net:persist-retries 5
+          set net:reconnect-interval-base 5
+          set net:reconnect-interval-multiplier 1
+          set net:timeout 30
+          set mirror:parallel-transfer-count 3
           open -u "$FTP_USERNAME","$FTP_PASSWORD" "$FTP_SERVER"
-          mirror -R --parallel=6 --delete --no-perms --ignore-time --verbose ./site/ "$FTP_SERVER_DIR"
+          mirror -R --parallel=3 --delete --no-perms --ignore-time --verbose ./site/ "$FTP_SERVER_DIR"
           put -O "$FTP_SERVER_DIR" ./site/frames.json
           put -O "$FTP_SERVER_DIR" ./site/index.html
           bye
           EOF
-          lftp -f deploy.lftp
+          ok=0
+          for attempt in 1 2 3; do
+          if lftp -f deploy.lftp; then echo "FTP-Upload ok (Versuch $attempt)"; ok=1; break; fi
+          echo "FTP-Versuch $attempt fehlgeschlagen - neuer Versuch in 20s..."
+          sleep 20
+          done
           rm -f deploy.lftp
-          # Bei "421 too many connections": die beiden 6er-Werte auf 3-4 senken.
+          if [ "$ok" != "1" ]; then echo "FTP-Upload nach 3 Versuchen fehlgeschlagen"; exit 1; fi
+          # Bei "421 too many connections": die beiden 3er-Werte weiter senken (z.B. 2).
           # Bei hartnaeckigen TLS-Problemen "set ftp:ssl-force true" -> "false".
