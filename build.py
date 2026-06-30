@@ -25,6 +25,15 @@ warnings.filterwarnings("ignore", message="invalid value encountered")
 import concurrent.futures as cf
 import inca_core as c
 
+
+def _model_worker(fn, d, h, now, q):
+    """Holt EIN Modell in einem eigenen Prozess; legt Ergebnis (oder Fehler) in die Queue."""
+    try:
+        q.put(fn(d, h, now))
+    except Exception as e:
+        import traceback; traceback.print_exc()
+        q.put({"__error__": repr(e)})
+
 OUT = os.environ.get("INCA_SITE", "site")
 RADAR_FRAMES = int(os.environ.get("RADAR_FRAMES", "24"))   # ~2 h bei 5-Min-Takt
 FC_HOURS = int(os.environ.get("FC_HOURS", "24"))           # Rueckfall-Vorhersagestunden
@@ -120,23 +129,40 @@ def build(local_radar=None, local_fc=None, local_icon_dir=None):
                  ("AROME",    c.arome_fields,   d_ar,  AROME_HOURS)]
         res = {}
         t_models = dt.datetime.now()
+        import time as _t, multiprocessing as mp
+        MODEL_TIMEOUT = float(os.environ.get("MODEL_TIMEOUT", "240"))   # hartes Limit je Modell (Sekunden)
         try:
-            with cf.ProcessPoolExecutor(max_workers=3) as ex:
-                futs = {ex.submit(fn, d, h, now): name for name, fn, d, h in specs}
-                for fut in cf.as_completed(futs):
-                    name = futs[fut]
-                    try:
-                        res[name] = fut.result()
-                    except Exception as e:
-                        import traceback; traceback.print_exc(); print(name, "fehlgeschlagen:", e)
-        except Exception as e:
-            import traceback; traceback.print_exc(); print("Parallel-Abruf nicht moeglich:", e)
-        if sum(len(v) for v in res.values()) == 0:          # Rueckfall: seriell, falls parallel nichts kam
+            ctx = mp.get_context("fork")
+            procs = []
+            for name, fn, d, h in specs:                          # alle drei gleichzeitig starten
+                q = ctx.Queue()
+                p = ctx.Process(target=_model_worker, args=(fn, d, h, now, q), daemon=True)
+                p.start(); procs.append((name, p, q))
+            deadline = _t.time() + MODEL_TIMEOUT                  # gemeinsame Frist -> Gesamtzeit gedeckelt
+            for name, p, q in procs:
+                remaining = max(1.0, deadline - _t.time())
+                out = None
+                try:
+                    out = q.get(timeout=remaining)               # erst Ergebnis holen (Deadlock-Schutz bei grossen Feldern)
+                except Exception:
+                    out = None
+                if isinstance(out, dict) and "__error__" in out:
+                    print(name, "fehlgeschlagen:", out["__error__"]); out = None
+                elif out is None and p.is_alive():
+                    print(name, f"Zeitlimit {int(MODEL_TIMEOUT)}s ueberschritten -> abgebrochen")
+                if p.is_alive():
+                    p.terminate()
+                p.join(5)
+                res[name] = out or {}
+        except Exception as e:                                    # Rueckfall: seriell, falls die Prozesse nicht gehen
+            import traceback; traceback.print_exc(); print("Parallel-Abruf nicht moeglich, seriell:", e)
             for name, fn, d, h in specs:
+                if res.get(name):
+                    continue
                 try:
                     res[name] = fn(d, h, now)
-                except Exception as e:
-                    import traceback; traceback.print_exc(); print(name, "fehlgeschlagen:", e)
+                except Exception as e2:
+                    import traceback; traceback.print_exc(); print(name, "fehlgeschlagen:", e2)
         ch1   = res.get("ICON-CH1", {}) or {}
         d2    = res.get("ICON-D2",  {}) or {}
         arome = res.get("AROME",    {}) or {}
