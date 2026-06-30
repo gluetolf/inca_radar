@@ -1,66 +1,77 @@
 # =============================================================================
 # inca.yml  –  GitHub-Actions-Workflow fuer das Niederschlagsradar
 #
-# Ablauf: Ein externer Dienst (cron-job.org) stoesst diesen Workflow alle 5 Minuten
-# ueber die GitHub-API an (workflow_dispatch). GitHub startet dann einen frischen
+# Ablauf: Ein externer Dienst (cron-job.org) stoesst diesen Workflow ueber die
+# GitHub-API an (workflow_dispatch). GitHub startet dann einen frischen
 # Cloud-Rechner, laesst build.py laufen (erzeugt ./site/) und schiebt das Ergebnis
 # per FTP auf den Webspace. Danach wird der Rechner weggeworfen.
 # Ablageort im Repo: .github/workflows/inca.yml
 #
 # Hinweis: Es gibt hier KEINEN "schedule"-Block mehr. Der Takt kommt von cron-job.org.
-# Vorteil: keine doppelten Laeufe, und GitHub deaktiviert den Workflow nicht mehr
-# automatisch nach 60 Tagen (das betrifft nur geplante/"scheduled" Workflows).
 # =============================================================================
 
 name: INCA Radar aktualisieren        # Anzeigename im Tab "Actions"
 
-# ---- WANN soll der Ablauf starten? ------------------------------------------
 on:
   workflow_dispatch:                  # per API (cron-job.org) ODER "Run workflow"-Knopf
 
-# ---- Mehrere Laeufe nicht gleichzeitig ausfuehren ---------------------------
 concurrency:
-  group: inca-build                   # alle Laeufe gehoeren in dieselbe Gruppe
-  cancel-in-progress: false           # laeuft schon einer, wartet der neue, statt
-                                      # ihn abzubrechen (verhindert FTP-Kollisionen)
+  group: inca-build
+  cancel-in-progress: false           # laufender Build wird nicht abgebrochen (keine FTP-Kollision)
 
-# ---- WAS soll getan werden? -------------------------------------------------
 jobs:
   build-and-deploy:
-    runs-on: ubuntu-latest            # frischer, leerer Linux-Rechner in der Cloud
+    runs-on: ubuntu-latest
     steps:
 
-      # 1) Den eigenen Repo-Code auf den Rechner kopieren
+      # 1) Repo-Code holen
       - name: Code holen
         uses: actions/checkout@v4
 
-      # 2) Python bereitstellen (mit Paket-Zwischenspeicher fuer schnellere Laeufe)
+      # 2) Python bereitstellen (mit pip-Cache)
       - name: Python einrichten
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
           cache: pip
 
-      # 3) Die benoetigten Bibliotheken installieren
+      # 3) Bibliotheken installieren
       - name: Abhaengigkeiten installieren
         run: pip install -r requirements.txt
 
-      # 4) Das eigentliche Skript ausfuehren -> erzeugt den Ordner ./site/
-      #    METEOFRANCE_TOKEN wird aus den Repository-Secrets durchgereicht (fuer AROME).
+      # 4) Karten bauen -> ./site/   (METEOFRANCE_TOKEN aus Secrets fuer AROME)
       - name: Radardaten holen und Karten bauen
         env:
           METEOFRANCE_TOKEN: ${{ secrets.METEOFRANCE_TOKEN }}
         run: python build.py
 
-      # 5) Den Ordner ./site/ per FTP auf den Webspace (METAhost) laden.
-      #    Die Zugangsdaten stehen sicher in den Repository-Secrets und nie im Klartext.
-      - name: Per FTP auf METAhost laden
-        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
-        with:
-          server:     ${{ secrets.FTP_SERVER }}       # FTP-Host
-          username:   ${{ secrets.FTP_USERNAME }}     # FTP-Benutzer
-          password:   ${{ secrets.FTP_PASSWORD }}     # FTP-Passwort
-          local-dir:  ./site/                         # das wird hochgeladen
-          server-dir: ${{ secrets.FTP_SERVER_DIR }}   # Zielordner auf dem Webspace
-          protocol:   ftps                            # verschluesselt; bei hartnaeckigen
-                                                      # Verbindungsproblemen auf "ftp" aendern
+      # 5) ./site/ per FTP hochladen - PARALLEL mit lftp (mehrere Dateien gleichzeitig).
+      #    Deutlich schneller als Einzel-Upload bei den vielen kleinen PNGs.
+      #    Zugangsdaten kommen aus den Secrets, landen nur in einer temporaeren
+      #    Skriptdatei und werden danach geloescht.
+      - name: Per FTP auf METAhost laden (parallel, lftp)
+        env:
+          FTP_SERVER:     ${{ secrets.FTP_SERVER }}
+          FTP_USERNAME:   ${{ secrets.FTP_USERNAME }}
+          FTP_PASSWORD:   ${{ secrets.FTP_PASSWORD }}
+          FTP_SERVER_DIR: ${{ secrets.FTP_SERVER_DIR }}
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq lftp
+          cat > deploy.lftp <<EOF
+          set ftp:ssl-force true
+          set ftp:ssl-protect-data true
+          set ssl:verify-certificate no
+          set ftp:passive-mode true
+          set net:max-retries 3
+          set net:timeout 25
+          set mirror:parallel-transfer-count 6
+          open -u "$FTP_USERNAME","$FTP_PASSWORD" "$FTP_SERVER"
+          mirror -R --parallel=6 --delete --no-perms --ignore-time --verbose ./site/ "$FTP_SERVER_DIR"
+          put -O "$FTP_SERVER_DIR" ./site/frames.json
+          put -O "$FTP_SERVER_DIR" ./site/index.html
+          bye
+          EOF
+          lftp -f deploy.lftp
+          rm -f deploy.lftp
+          # Bei "421 too many connections": die beiden 6er-Werte auf 3-4 senken.
+          # Bei hartnaeckigen TLS-Problemen "set ftp:ssl-force true" -> "false".
