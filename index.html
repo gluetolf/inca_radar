@@ -288,19 +288,25 @@
   var PN=PLACES.map(function(p){return [stripDia(p[0]), expandUml(p[0])];});  // beide Schreibweisen vorberechnen
   var SBOX=document.getElementById('searchbox'),
       SIN=document.getElementById('searchInput'),
-      SRES=document.getElementById('searchResults');
+      SRES=document.getElementById('searchResults'),
+      firstHit=null;                                            // erstes lokales Ergebnis (fuer Enter)
   function openSearch(){SBOX.style.display='block';SIN.focus();SIN.select();}
   function closeSearch(){SBOX.style.display='none';SRES.innerHTML='';}
   function gotoPlace(lat,lng){closeSearch();SIN.value='';map.setView([lat,lng],Math.max(map.getZoom(),12));}
   document.getElementById('searchBtn').onclick=function(){SBOX.style.display==='block'?closeSearch():openSearch();};
-  SIN.addEventListener('keydown',function(e){if(e.key==='Escape')closeSearch();});
+  SIN.addEventListener('keydown',function(e){
+    if(e.key==='Escape'){closeSearch();}
+    else if(e.key==='Enter'){e.preventDefault();
+      if(firstHit){gotoPlace(firstHit[0],firstHit[1]);}        // direkt zum ersten Treffer
+      else if(SIN.value.trim().length>=2){worldSearch(SIN.value.trim());}} // sonst weltweit suchen
+  });
   function item(label,gem,onclick,cls){
     var d=document.createElement('div'); d.className='sr-item'+(cls?(' '+cls):'');
     d.innerHTML='<span class="sr-name">'+label+'</span>'+(gem?'<span class="sr-gem">'+gem+'</span>':'');
     d.onclick=onclick; return d;
   }
   function renderResults(){
-    var q=SIN.value.trim(), nq=stripDia(q); SRES.innerHTML='';
+    var q=SIN.value.trim(), nq=stripDia(q); SRES.innerHTML=''; firstHit=null;
     if(nq.length<2) return;
     var hits=[];
     for(var i=0;i<PLACES.length;i++){
@@ -309,6 +315,7 @@
       if(k>=0)hits.push([k,i]);
     }
     hits.sort(function(a,b){return a[0]-b[0] || PLACES[a[1]][0].length-PLACES[b[1]][0].length;});
+    if(hits.length){var fp=PLACES[hits[0][1]];firstHit=[fp[1],fp[2]];}  // erster Treffer fuer Enter
     hits.slice(0,8).forEach(function(h){var p=PLACES[h[1]];
       var gem=(p.length>3&&p[3]!==p[0])?p[3]:'';
       SRES.appendChild(item(p[0],gem,function(){gotoPlace(p[1],p[2]);}));
@@ -447,6 +454,8 @@
   load(); setInterval(load,5*60*1000); setInterval(updateStamp,30*1000);
 
   document.addEventListener('keydown',function(e){
+    var t=e.target;                                            // beim Tippen in Felder nicht eingreifen
+    if(t&&(t.tagName==='INPUT'||t.tagName==='TEXTAREA'||t.isContentEditable))return;
     if(e.code==='Space'){e.preventDefault();playing?pause():play();}
     else if(e.code==='ArrowRight'){pause();show(idx+1);}
     else if(e.code==='ArrowLeft'){pause();show(idx-1);}});
