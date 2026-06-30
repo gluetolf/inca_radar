@@ -327,16 +327,28 @@
   function updateDynLabels(){
     dynMarkers.forEach(function(m){map.removeLayer(m);}); dynMarkers=[];
     if(map.getZoom()<10) return;                              // erst beim Hineinzoomen
-    var b=map.getBounds(),s=b.getSouth(),n=b.getNorth(),w=b.getWest(),e=b.getEast(),cnt=0;
-    for(var i=0;i<PLACES.length && cnt<55;i++){var p=PLACES[i];
+    var b=map.getBounds(),s=b.getSouth(),n=b.getNorth(),w=b.getWest(),e=b.getEast();
+    // Entzerrung per Bildschirm-Raster: pro Zelle nur EIN Label. Gleichmaessige Verteilung,
+    // mehr Labels beim Hineinzoomen, stabil beim Verschieben (kein hartes Stueck-Limit mehr).
+    var CW=84, CH=22, occ={};
+    function take(pt){
+      var k=Math.floor(pt.x/CW)+'_'+Math.floor(pt.y/CH);
+      if(occ[k]) return false; occ[k]=1; return true;
+    }
+    cityMarkers.forEach(function(o){                          // Plaetze sichtbarer Stadt-Labels blockieren
+      if(map.hasLayer(o.m)) take(map.latLngToContainerPoint(o.m.getLatLng()));
+    });
+    var placed=0, MAX=500;                                    // reine Sicherheitsgrenze
+    for(var i=0;i<PLACES.length && placed<MAX;i++){var p=PLACES[i];
       if(p[1]<s||p[1]>n||p[2]<w||p[2]>e) continue;            // ausserhalb der Ansicht
       if(curatedNames[p[0]]) continue;                        // schon als festes Label vorhanden
+      if(!take(map.latLngToContainerPoint([p[1],p[2]]))) continue;  // Zelle belegt -> ueberspringen
       dynMarkers.push(L.marker([p[1],p[2]],{interactive:false,keyboard:false,icon:L.divIcon({
         className:'city-label',html:'<div class="city-dot"></div>'+p[0],iconSize:[0,0],iconAnchor:[0,0]})}).addTo(map));
-      cnt++;
+      placed++;
     }
   }
-  map.on('moveend',updateDynLabels);
+  map.on('moveend',updateDynLabels); updateDynLabels();
   // ---- Ortssuche: sofort lokal (~4000 CH-Orte), optional weltweit per Klick ----
   function stripDia(s){return s.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();}        // ü -> u
   function expandUml(s){return s.toLowerCase().replace(/ä/g,'ae').replace(/ö/g,'oe').replace(/ü/g,'ue').replace(/ß/g,'ss');} // ü -> ue
