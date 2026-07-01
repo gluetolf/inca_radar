@@ -3,8 +3,7 @@
 #
 # Ablauf: cron-job.org stoesst diesen Workflow ueber die GitHub-API an
 # (workflow_dispatch). GitHub baut mit build.py den Ordner ./site/ und laedt ihn
-# per FTP auf METAhost. Ablageort im Repo: .github/workflows/inca.yml
-# Kein "schedule"-Block: der Takt kommt von cron-job.org.
+# per SFTP auf METAhost. Ablageort im Repo: .github/workflows/inca.yml
 # =============================================================================
 
 name: INCA Radar aktualisieren
@@ -14,7 +13,7 @@ on:
 
 concurrency:
   group: inca-build
-  cancel-in-progress: false           # laufender Build wird nicht abgebrochen (keine FTP-Kollision)
+  cancel-in-progress: false           # laufender Build wird nicht abgebrochen (keine Upload-Kollision)
 
 jobs:
   build-and-deploy:
@@ -38,38 +37,43 @@ jobs:
           METEOFRANCE_TOKEN: ${{ secrets.METEOFRANCE_TOKEN }}
         run: python build.py
 
-      # ./site/ per FTP hochladen - robust gegen die zeitweisen METAhost-Timeouts:
-      #  * EINE Verbindung, sequentiell (parallel=1) -> schonend fuer den Host
-      #  * Keepalive/Reconnect -> haelt die Kontrollverbindung offen
-      #  * der GANZE Upload wird bei Fehler bis zu 4x mit 30s Pause wiederholt
-      #  * mirror --ignore-time laedt nur geaenderte Dateien; frames.json wird IMMER
-      #    frisch nachgeschoben (gleiche Groesse, aber neuer Inhalt pro Build)
-      - name: Per FTP auf METAhost laden
+      # ./site/ per SFTP (SSH, Port 22) hochladen - meist stabiler als das wackelige FTPS.
+      #  * lftp + sshpass fuer Passwort-Login ueber SSH
+      #  * eine Verbindung, sequentiell; laedt nur GEAENDERTE Dateien (mirror --ignore-time)
+      #  * bei Abbruch reconnectet lftp hartnaeckig; zusaetzlich aeussere Wiederhol-Schleife (6x)
+      #  * frames.json wird immer frisch nachgeschoben (gleiche Groesse, neuer Inhalt pro Build)
+      - name: Per SFTP auf METAhost laden
         env:
           FTP_SERVER:     ${{ secrets.FTP_SERVER }}
           FTP_USERNAME:   ${{ secrets.FTP_USERNAME }}
           FTP_PASSWORD:   ${{ secrets.FTP_PASSWORD }}
           FTP_SERVER_DIR: ${{ secrets.FTP_SERVER_DIR }}
+          SFTP_PORT:      ${{ secrets.SFTP_PORT }}     # optional; leer -> 2121 (METANET-Standard)
         run: |
-          sudo apt-get update -qq && sudo apt-get install -y -qq lftp >/dev/null
+          sudo apt-get update -qq && sudo apt-get install -y -qq lftp sshpass >/dev/null
+          export SSHPASS="$FTP_PASSWORD"
+          PORT="${SFTP_PORT:-2121}"          # METANET/Plesk: SFTP laeuft auf Port 2121
+          SSH="sshpass -e ssh -a -x -oBatchMode=no -oStrictHostKeyChecking=no -oUserKnownHostsFile=/dev/null -oConnectTimeout=20"
           CMDS="set cmd:fail-exit true; \
-                set net:timeout 30; set net:max-retries 2; set net:persist-retries 3; \
+                set sftp:auto-confirm yes; \
+                set sftp:connect-program \"$SSH\"; \
+                set net:timeout 20; set net:max-retries 8; set net:persist-retries 8; \
                 set net:reconnect-interval-base 5; set net:reconnect-interval-multiplier 1; \
-                set ftp:passive-mode true; set ftp:ssl-force true; set ftp:ssl-protect-data true; \
-                set ssl:verify-certificate no; set mirror:parallel-transfer-count 1; \
-                cd \"$FTP_SERVER_DIR\"; \
-                echo '--- Zielverzeichnis:'; pwd; \
+                set mirror:parallel-transfer-count 1; \
+                open -u \"$FTP_USERNAME\",\"$FTP_PASSWORD\" -p $PORT sftp://$FTP_SERVER; \
+                echo '--- SFTP-Home:'; pwd; echo '--- Inhalt Home:'; cls; \
+                cd \"$FTP_SERVER_DIR\"; echo '--- Zielverzeichnis:'; pwd; \
                 echo '--- Uebertrage geaenderte Dateien:'; \
                 mirror -R -v --ignore-time --delete ./site/ .; \
-                echo '--- frames.json erzwingen:'; put ./site/frames.json; \
-                echo '--- Kontrolle frames.json auf dem Server:'; cls -l frames.json; \
+                put ./site/frames.json; \
+                echo '--- Upload abgeschlossen.'; \
                 bye"
           n=1
-          until lftp -u "$FTP_USERNAME","$FTP_PASSWORD" -e "$CMDS" "$FTP_SERVER"; do
-            if [ "$n" -ge 4 ]; then
-              echo "::error::FTP nach $n Versuchen fehlgeschlagen (METAhost-Timeout)"; exit 1
+          until lftp -e "$CMDS"; do
+            if [ "$n" -ge 6 ]; then
+              echo "::error::SFTP nach $n Versuchen fehlgeschlagen"; exit 1
             fi
-            echo "FTP-Versuch $n fehlgeschlagen - warte 30 s und versuche erneut..."
-            sleep 30; n=$((n+1))
+            echo "SFTP-Versuch $n unvollstaendig - warte 20 s und mache weiter (bereits Uebertragenes wird uebersprungen)..."
+            sleep 20; n=$((n+1))
           done
-          echo "FTP-Upload erfolgreich (Versuch $n)"
+          echo "SFTP-Upload vollstaendig (Versuch $n)"
