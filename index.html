@@ -16,7 +16,7 @@
   #map{position:absolute;inset:0;background:#dfe5d8;z-index:0}
   .city-label{background:none;border:none;box-shadow:none;font-weight:600;font-size:12px;color:#2c3422;
     text-shadow:0 0 3px #fff,0 0 3px #fff,0 0 6px #fff;white-space:nowrap;pointer-events:auto;cursor:pointer}
-  .lake-label{background:none;border:none;box-shadow:none;font-style:italic;font-weight:500;font-size:12px;
+  .lake-label{background:none;border:none;box-shadow:none;font-style:italic;font-weight:500;font-size:11px;
     color:#1b5a8c;letter-spacing:.5px;transform:translate(-50%,-50%);
     text-shadow:0 0 3px #fff,0 0 3px #fff,0 0 6px #fff;white-space:nowrap;pointer-events:auto;cursor:pointer}
   .city-dot{width:5px;height:5px;border-radius:50%;background:#2c3422;box-shadow:0 0 0 2px #fff;margin:0 auto 2px}
@@ -24,7 +24,7 @@
   .city-home{color:var(--green-dark)}
   .peak-label{background:none;border:none;box-shadow:none;white-space:nowrap;pointer-events:auto;cursor:pointer}
   .peak-tri{position:absolute;left:-5px;top:-4px;width:0;height:0;border-left:5px solid transparent;border-right:5px solid transparent;border-bottom:9px solid #b0b5bd;filter:drop-shadow(0 0 1px #fff)}
-  .peak-txt{position:absolute;left:7px;top:-13px;font-weight:500;font-size:12px;color:#adb2ba;text-shadow:0 0 2px #fff,0 0 2px #fff,0 0 3px #fff;transform:rotate(-18deg);transform-origin:left bottom}
+  .peak-txt{position:absolute;left:7px;top:-12px;font-weight:500;font-size:11px;color:#adb2ba;text-shadow:0 0 2px #fff,0 0 2px #fff,0 0 3px #fff;transform:rotate(-18deg);transform-origin:left bottom}
   .peak-txt b{font-weight:400;color:#bdc1c8}
   .topbar{position:absolute;top:0;left:0;right:0;z-index:500;display:flex;align-items:center;gap:12px;padding:12px 16px;pointer-events:none}
   .brand{pointer-events:auto;background:var(--panel);backdrop-filter:blur(8px);border:1px solid var(--panel-line);
@@ -162,7 +162,7 @@
 <div class="loading" id="loading"><div class="errbox" id="loadtext"><div class="spinner"></div>Daten werden geladen…</div></div>
 
 <script src="places.js?v=1"></script>
-<script src="peaks.js?v=1"></script>
+<script src="peaks.js?v=2"></script>
 
 <script>
 /* Viewer: laedt frames.json (Liste von Radar-/Vorhersagebildern) und animiert sie
@@ -230,9 +230,9 @@
   // Label-Ebene, exakt entlang der Schweizer Grenze ausgespart: im Ausland Ortsnamen aus der
   // Basiskarte, in der Schweiz unsere eigenen Labels (keine Doppelung, kein grobes Rechteck mehr).
   map.createPane('lbl'); map.getPane('lbl').style.zIndex=450; map.getPane('lbl').style.pointerEvents='none';
-  // Gipfel-Ebene: zwischen Basiskarte (tilePane 200) und Niederschlag (overlayPane 400) ->
-  // Berg-Labels wirken wie Teil der Karte und werden vom Niederschlag ueberdeckt.
-  map.createPane('peaks'); map.getPane('peaks').style.zIndex=350; map.getPane('peaks').style.pointerEvents='none';
+  // Hintergrund-Label-Ebene: zwischen Basiskarte (tilePane 200) und Niederschlag (overlayPane 400).
+  // Enthaelt Seen- UND Gipfel-Labels -> beide wirken wie Teil der Karte, der Niederschlag liegt darueber.
+  map.createPane('bglbl'); map.getPane('bglbl').style.zIndex=350; map.getPane('bglbl').style.pointerEvents='none';
   var ClippedLabels=L.TileLayer.extend({
     createTile:function(coords,done){
       var tile=document.createElement('canvas'), sz=this.getTileSize();
@@ -321,13 +321,13 @@
   var citySorted=cityMarkers.slice().sort(function(a,b){return a.mz-b.mz;});
   // ---- Seenamen: eigene Beschriftung (die Hintergrundkarte zeigt in der CH keine Labels) ----
   var LAKES=[
-    ["Genfersee",46.45,6.49,8],["Bodensee",47.61,9.30,8],["Neuenburgersee",46.91,6.86,8],["Vierwaldstättersee",47.00,8.43,8],["Zürichsee",47.22,8.69,8],
+    ["Genfersee",46.45,6.49,8],["Bodensee",47.61,9.30,8],["Neuenburgersee",46.91,6.86,8],["Vierwaldstättersee",47.00,8.43,8],["Zürichsee",47.22,8.69,8],["Lago Maggiore",46.12,8.79,8],
     ["Lago di Lugano",46.00,8.97,9],["Thunersee",46.68,7.72,9],["Bielersee",47.08,7.17,9],["Zugersee",47.13,8.49,9],["Brienzersee",46.72,7.96,9],["Walensee",47.12,9.19,9],["Murtensee",46.93,7.08,9],
     ["Sempachersee",47.14,8.15,10],["Hallwilersee",47.28,8.21,10],["Greifensee",47.35,8.68,10],["Sarnersee",46.87,8.23,10],["Lac de la Gruyère",46.66,7.10,10],["Ägerisee",47.12,8.63,10],["Sihlsee",47.13,8.78,10],["Lac de Joux",46.62,6.27,10],["Baldeggersee",47.20,8.26,10],
     ["Pfäffikersee",47.345,8.785,11],["Silsersee",46.42,9.74,11],["Silvaplanersee",46.45,9.79,11],["Klöntalersee",47.025,8.99,11],["Wägitalersee",47.08,8.89,11],["Lungerersee",46.785,8.16,11],["Oeschinensee",46.50,7.73,11]
   ];
   var lakeMarkers=LAKES.map(function(l){
-    var m=L.marker([l[1],l[2]],{interactive:true,keyboard:false,icon:L.divIcon({
+    var m=L.marker([l[1],l[2]],{pane:'bglbl',interactive:true,keyboard:false,icon:L.divIcon({
       className:'lake-label',html:l[0],iconSize:[0,0],iconAnchor:[0,0]})});
     m._name=l[0]; m.on('click',onLabelTap);
     return {mz:l[3],m:m};
@@ -340,7 +340,7 @@
   function peakMz(f){ return f>=85?8 : f>=70?9 : f>=56?10 : f>=46?11 : 12; }
   var PEAKS=(window.PEAKS&&window.PEAKS.length)?window.PEAKS:[];
   var peakMarkers=PEAKS.map(function(p){
-    var m=L.marker([p[0],p[1]],{pane:'peaks',interactive:true,keyboard:false,icon:L.divIcon({
+    var m=L.marker([p[0],p[1]],{pane:'bglbl',interactive:true,keyboard:false,icon:L.divIcon({
       className:'peak-label',
       html:'<div class="peak-tri"></div><span class="peak-txt">'+p[2]+' <b>'+p[3]+'</b></span>',
       iconSize:[0,0],iconAnchor:[0,0]})});
@@ -368,7 +368,7 @@
   // Textbreite messen (einmalig gecacht) -> Entzerrung kennt die echte Label-Groesse
   var _mctx=document.createElement('canvas').getContext('2d');
   var _FF='-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif';
-  var _fPlace='600 12px '+_FF, _fLake='italic 500 12px '+_FF, _fPeak='500 12px '+_FF, _wCache={};
+  var _fPlace='600 12px '+_FF, _fLake='italic 500 11px '+_FF, _fPeak='500 11px '+_FF, _wCache={};
   function textW(name,font){
     var k=font+'|'+name; if(_wCache[k]!=null) return _wCache[k];
     _mctx.font=font; var v=_mctx.measureText(name).width; _wCache[k]=v; return v;
