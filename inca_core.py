@@ -240,7 +240,8 @@ ICON_COLLECTION = os.environ.get("ICON_COLLECTION", "ch.meteoschweiz.ogd-forecas
 def _post_json(url, body, timeout=120):
     import urllib.request, json as _json
     req = urllib.request.Request(url, data=_json.dumps(body).encode(),
-                                 headers={"Content-Type": "application/json", "Accept": "application/json"})
+                                 headers={"Content-Type": "application/json", "Accept": "application/json",
+                                          "Cache-Control": "no-cache, no-store, max-age=0", "Pragma": "no-cache"})
     with urllib.request.urlopen(req, timeout=timeout) as r:
         return _json.load(r)
 
@@ -759,14 +760,23 @@ def _collect_rzc(assets):
 
 def radar_latest_assets(limit=24):
     """Liste (datetime, href) der letzten RZC-Radarbilder (neueste zuerst).
-    Ueber die Items-LISTE der Collection - dieser Endpunkt wird frisch ausgeliefert.
-    (Der gezielte Tages-Item-Endpunkt /items/<id> lieferte zwischengespeicherte, veraltete
-    Daten, selbst mit Cache-Buster - daher bewusst wieder die Liste.)"""
-    bust = int(dt.datetime.now(dt.timezone.utc).timestamp())
-    data = _get_json(f"{STAC}/collections/{RADAR_COLLECTION}/items?limit=200&_={bust}", no_cache=True)
+    Bevorzugt den STAC-/search-Endpunkt per POST - POST wird vom CDN nicht gecacht und
+    liefert daher die AKTUELLSTEN Assets. Der GET-/items-Endpunkt wurde ~50 min alt
+    ausgeliefert (CDN-Cache, den auch no-cache-Header nicht durchbrachen)."""
     found = {}   # datetime -> href
-    for feat in data.get("features", []):
-        found.update(_collect_rzc(feat.get("assets", {})))
+    try:
+        body = {"collections": [RADAR_COLLECTION], "limit": 100}
+        data = _post_json(f"{STAC}/search", body)
+        for feat in data.get("features", []):
+            found.update(_collect_rzc(feat.get("assets", {})))
+        if not found:
+            raise RuntimeError("keine RZC-Assets in /search-Antwort")
+    except Exception as e:
+        print(f"  Radar: /search (POST) fehlgeschlagen ({e}) -> Fallback GET-Liste")
+        bust = int(dt.datetime.now(dt.timezone.utc).timestamp())
+        data = _get_json(f"{STAC}/collections/{RADAR_COLLECTION}/items?limit=200&_={bust}", no_cache=True)
+        for feat in data.get("features", []):
+            found.update(_collect_rzc(feat.get("assets", {})))
     times = sorted(found, reverse=True)[:limit]
     return [(t.isoformat(), found[t]) for t in times]
 
