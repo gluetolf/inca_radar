@@ -569,6 +569,7 @@ def arome_fields(tmp, max_hours=12, now=None, bbox=None):
     HINWEIS: Das exakte WCS-Format konnte offline nicht getestet werden; die Funktion druckt
     Diagnose und gibt im Zweifel {} zurueck, damit der Build (CH1+D2) nie abbricht."""
     import re
+    import urllib.error
     from scipy.ndimage import gaussian_filter
     if not os.environ.get("METEOFRANCE_TOKEN", ""):
         print("AROME: METEOFRANCE_TOKEN fehlt -> uebersprungen"); return {}
@@ -633,8 +634,14 @@ def arome_fields(tmp, max_hours=12, now=None, bbox=None):
                   f"&subset=lat({latS},{latN})&subset=long({lonW},{lonE})")
             try:
                 raw = _mf_get(gc)
+            except urllib.error.HTTPError as e:
+                if e.code == 404:                                  # diese Vorlaufstunde ist noch nicht publiziert - normal
+                    if shown < 2: print(f"  AROME {when:%H:%MZ} noch nicht verfuegbar (wird nachgeliefert)"); shown += 1
+                else:
+                    if shown < 2: print(f"  AROME GetCoverage {when:%Y-%m-%dT%H:%MZ}:", e); shown += 1
+                continue
             except Exception as e:
-                if shown < 2: print(f"  AROME GetCoverage {when:%Y-%m-%dT%H:%MZ} fehlgeschlagen:", e); shown += 1
+                if shown < 2: print(f"  AROME GetCoverage {when:%Y-%m-%dT%H:%MZ}:", e); shown += 1
                 continue
             if raw[:4] != b"GRIB":
                 if shown < 2: print(f"  AROME {when:%H:%MZ} kein GRIB; Anfang:", raw[:160]); shown += 1
