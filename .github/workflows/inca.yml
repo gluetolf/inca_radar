@@ -61,8 +61,7 @@ jobs:
                 set net:reconnect-interval-base 5; set net:reconnect-interval-multiplier 1; \
                 set mirror:parallel-transfer-count 1; \
                 open -u \"$FTP_USERNAME\",\"$FTP_PASSWORD\" -p $PORT sftp://$FTP_SERVER; \
-                echo '--- SFTP-Home:'; pwd; echo '--- Inhalt Home:'; cls; \
-                cd \"$FTP_SERVER_DIR\"; echo '--- Zielverzeichnis:'; pwd; \
+                cd \"$FTP_SERVER_DIR\"; \
                 echo '--- Uebertrage geaenderte Dateien:'; \
                 mirror -R -v --ignore-time --delete ./site/ .; \
                 put ./site/frames.json; \
