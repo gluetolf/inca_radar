@@ -755,36 +755,13 @@ def _collect_rzc(assets):
 
 def radar_latest_assets(limit=24):
     """Liste (datetime, href) der letzten RZC-Radarbilder (neueste zuerst).
-    Holt gezielt nur das/die neuesten TAGES-Item(s) (Item-ID = YYYYMMDD-ch) statt der kompletten
-    14-Tage-Liste -> viel kleinere Antwort, schnellerer Build. Faellt bei Bedarf auf die
-    Gesamtliste zurueck (falls die ID-Form mal abweicht oder das Tages-Item fehlt)."""
-    def fetch_day(d):
-        item_id = d.strftime("%Y%m%d") + "-ch"
-        bust = int(dt.datetime.now(dt.timezone.utc).timestamp())   # Cache-Buster: frische Version erzwingen
-        try:
-            feat = _get_json(f"{STAC}/collections/{RADAR_COLLECTION}/items/{item_id}?nocache={bust}")
-            return _collect_rzc(feat.get("assets", {}))
-        except Exception as e:
-            print(f"  Radar-Tagesitem {item_id} nicht abrufbar: {e}")
-            return {}
-
-    found = {}
-    try:
-        now = dt.datetime.now(dt.timezone.utc)
-        found = fetch_day(now)
-        if len(found) < limit:                        # kurz nach UTC-Mitternacht: Vortag ergaenzen
-            prev = fetch_day(now - dt.timedelta(days=1))
-            prev.update(found)                        # heutige (neuere) Eintraege haben Vorrang
-            found = prev
-        if not found:
-            raise RuntimeError("keine RZC-Assets im Tages-Item")
-    except Exception as e:                            # Fallback: alte Methode ueber die Gesamtliste
-        print(f"  Radar: schneller Tages-Abruf fehlgeschlagen ({e}) -> Fallback auf Gesamtliste")
-        data = _get_json(f"{STAC}/collections/{RADAR_COLLECTION}/items?limit=200")
-        found = {}
-        for feat in data.get("features", []):
-            found.update(_collect_rzc(feat.get("assets", {})))
-
+    Ueber die Items-LISTE der Collection - dieser Endpunkt wird frisch ausgeliefert.
+    (Der gezielte Tages-Item-Endpunkt /items/<id> lieferte zwischengespeicherte, veraltete
+    Daten, selbst mit Cache-Buster - daher bewusst wieder die Liste.)"""
+    data = _get_json(f"{STAC}/collections/{RADAR_COLLECTION}/items?limit=200")
+    found = {}   # datetime -> href
+    for feat in data.get("features", []):
+        found.update(_collect_rzc(feat.get("assets", {})))
     times = sorted(found, reverse=True)[:limit]
     return [(t.isoformat(), found[t]) for t in times]
 
