@@ -22,6 +22,10 @@
   .city-dot{width:5px;height:5px;border-radius:50%;background:#2c3422;box-shadow:0 0 0 2px #fff;margin:0 auto 2px}
   .city-home .city-dot{background:var(--green);box-shadow:0 0 0 2px #fff,0 0 8px var(--green)}
   .city-home{color:var(--green-dark)}
+  .peak-label{background:none;border:none;box-shadow:none;white-space:nowrap;pointer-events:auto;cursor:pointer}
+  .peak-tri{position:absolute;left:-5px;top:-4px;width:0;height:0;border-left:5px solid transparent;border-right:5px solid transparent;border-bottom:9px solid #b0b5bd;filter:drop-shadow(0 0 1px #fff)}
+  .peak-txt{position:absolute;left:7px;top:-13px;font-weight:500;font-size:12px;color:#adb2ba;text-shadow:0 0 2px #fff,0 0 2px #fff,0 0 3px #fff;transform:rotate(-18deg);transform-origin:left bottom}
+  .peak-txt b{font-weight:400;color:#bdc1c8}
   .topbar{position:absolute;top:0;left:0;right:0;z-index:500;display:flex;align-items:center;gap:12px;padding:12px 16px;pointer-events:none}
   .brand{pointer-events:auto;background:var(--panel);backdrop-filter:blur(8px);border:1px solid var(--panel-line);
     border-radius:var(--radius);box-shadow:var(--shadow);padding:9px 14px;display:flex;align-items:center;gap:11px}
@@ -158,6 +162,7 @@
 <div class="loading" id="loading"><div class="errbox" id="loadtext"><div class="spinner"></div>Daten werden geladen…</div></div>
 
 <script src="places.js?v=1"></script>
+<script src="peaks.js?v=1"></script>
 
 <script>
 /* Viewer: laedt frames.json (Liste von Radar-/Vorhersagebildern) und animiert sie
@@ -327,6 +332,19 @@
   // nach Groesse sortiert (kleinere Zoomschwelle = groesserer See) -> grosse Seen zuerst platzieren
   var lakeSorted=lakeMarkers.slice().sort(function(a,b){return a.mz-b.mz;});
   // (Seen-Labels werden gemeinsam mit den Ortslabels in updateLabels() platziert & entzerrt - siehe unten)
+  // ---- Gipfel: [lat, lon, "Name", Höhe, Bekanntheit] aus peaks.js (window.PEAKS) ----
+  // Einblenden nach BEKANNTHEIT: die bekanntesten ab Zoom 8 (Übersicht), weniger bekannte spaeter.
+  function peakMz(f){ return f>=85?8 : f>=70?9 : f>=56?10 : f>=46?11 : 12; }
+  var PEAKS=(window.PEAKS&&window.PEAKS.length)?window.PEAKS:[];
+  var peakMarkers=PEAKS.map(function(p){
+    var m=L.marker([p[0],p[1]],{interactive:true,keyboard:false,icon:L.divIcon({
+      className:'peak-label',
+      html:'<div class="peak-tri"></div><span class="peak-txt">'+p[2]+' <b>'+p[3]+'</b></span>',
+      iconSize:[0,0],iconAnchor:[0,0]})});
+    m._name=p[2]; m.on('click',onLabelTap);
+    return {mz:peakMz(p[4]), m:m, label:p[2]+' '+p[3]};
+  });
+  var peakSorted=peakMarkers.slice().sort(function(a,b){return a.mz-b.mz;});  // bekannteste zuerst
   // Grosser Ortsdatensatz (eingebettet, ~4000 Orte) fuer die genaue Naechster-Ort-Anzeige.
   var PLACES=(window.PLACES&&window.PLACES.length)?window.PLACES:CITIES.map(function(c){return [c[0],c[1],c[2]];});
   var CLOSE_KM=3, FAR_KM=12;          // <=3 km: Ortschaft; <=12 km: Gemeinde; weiter: gar nichts
@@ -347,7 +365,7 @@
   // Textbreite messen (einmalig gecacht) -> Entzerrung kennt die echte Label-Groesse
   var _mctx=document.createElement('canvas').getContext('2d');
   var _FF='-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif';
-  var _fPlace='600 12px '+_FF, _fLake='italic 500 12px '+_FF, _wCache={};
+  var _fPlace='600 12px '+_FF, _fLake='italic 500 12px '+_FF, _fPeak='500 12px '+_FF, _wCache={};
   function textW(name,font){
     var k=font+'|'+name; if(_wCache[k]!=null) return _wCache[k];
     _mctx.font=font; var v=_mctx.measureText(name).width; _wCache[k]=v; return v;
@@ -389,21 +407,33 @@
     });
     // 3) dynamische Ortslabels - am Desktop erst ab Zoom 12, auf Touch ab 11
     dynMarkers.forEach(function(m){map.removeLayer(m);}); dynMarkers=[];
-    if(z < (touch?11:12)) return;
-    var b=map.getBounds(),s=b.getSouth(),n=b.getNorth(),w=b.getWest(),e=b.getEast();
-    var placed=0, MAX=500;                                    // reine Sicherheitsgrenze
-    for(var i=0;i<PLACES.length && placed<MAX;i++){var p=PLACES[i];
-      if(p[1]<s||p[1]>n||p[2]<w||p[2]>e) continue;            // ausserhalb der Ansicht
-      if(curatedNames[p[0]]) continue;                        // schon als festes Label vorhanden
-      var pt=map.latLngToContainerPoint([p[1],p[2]]);
-      var wpx=12+textW(p[0],_fPlace);                         // Punkt (~12px) + Textbreite
-      if(!box(pt.x, pt.y, wpx, false)) continue;              // Bereich belegt -> ueberspringen
-      box(pt.x, pt.y, wpx, true);                             // Bereich reservieren
-      var dm=L.marker([p[1],p[2]],{interactive:true,keyboard:false,icon:L.divIcon({
-        className:'city-label',html:'<div class="city-dot"></div>'+p[0],iconSize:[0,0],iconAnchor:[0,0]})}).addTo(map);
-      dm._name=p[0]; dm.on('click',onLabelTap); dynMarkers.push(dm);
-      placed++;
+    if(z >= (touch?11:12)){
+      var b=map.getBounds(),s=b.getSouth(),n=b.getNorth(),w=b.getWest(),e=b.getEast();
+      var placed=0, MAX=500;                                  // reine Sicherheitsgrenze
+      for(var i=0;i<PLACES.length && placed<MAX;i++){var p=PLACES[i];
+        if(p[1]<s||p[1]>n||p[2]<w||p[2]>e) continue;          // ausserhalb der Ansicht
+        if(curatedNames[p[0]]) continue;                      // schon als festes Label vorhanden
+        var pt=map.latLngToContainerPoint([p[1],p[2]]);
+        var wpx=12+textW(p[0],_fPlace);                       // Punkt (~12px) + Textbreite
+        if(!box(pt.x, pt.y, wpx, false)) continue;            // Bereich belegt -> ueberspringen
+        box(pt.x, pt.y, wpx, true);                           // Bereich reservieren
+        var dm=L.marker([p[1],p[2]],{interactive:true,keyboard:false,icon:L.divIcon({
+          className:'city-label',html:'<div class="city-dot"></div>'+p[0],iconSize:[0,0],iconAnchor:[0,0]})}).addTo(map);
+        dm._name=p[0]; dm.on('click',onLabelTap); dynMarkers.push(dm);
+        placed++;
+      }
     }
+    // 4) Gipfel ZULETZT (niedrigste Prioritaet -> treten hinter Seen/Orte zurueck; dezent, hellgrau).
+    //    Label sitzt schraeg rechts oberhalb des Dreiecks; Bereich entsprechend reservieren.
+    peakSorted.forEach(function(o){
+      var show=false;
+      if(z>=o.mz){
+        var pt=map.latLngToContainerPoint(o.m.getLatLng()), w=12+textW(o.label,_fPeak);
+        if(box(pt.x-4, pt.y-12, w, false)){ box(pt.x-4, pt.y-12, w, true); show=true; }
+      }
+      var on=map.hasLayer(o.m);
+      if(show && !on) o.m.addTo(map); else if(!show && on) map.removeLayer(o.m);
+    });
   }
   map.on('moveend',updateLabels); updateLabels();
   // ---- Ortssuche: sofort lokal (~4000 CH-Orte), optional weltweit per Klick ----
