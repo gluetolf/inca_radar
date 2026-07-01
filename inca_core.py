@@ -581,39 +581,46 @@ def arome_fields(tmp, max_hours=12, now=None, bbox=None):
     except Exception as e:
         print("AROME GetCapabilities fehlgeschlagen:", e); return {}
     ids = re.findall(r"CoverageId>\s*([^<\s]+)\s*<", cap)
-    precip = [i for i in ids if AROME_VAR in i and "_PT" in i]
+    # Niederschlags-Coverages: bevorzugt die konfigurierte Variable, sonst alles mit "PRECIPITATION".
+    precip = [i for i in ids if AROME_VAR in i]
+    if not precip:
+        precip = [i for i in ids if "PRECIPITATION" in i.upper()]
     print(f"AROME: {len(ids)} Coverages insgesamt, davon {len(precip)} Niederschlag")
     if not precip:
-        print("  Beispiel-Coverage-IDs:", ids[:6]); return {}
+        varset = sorted({i.split("___")[0] for i in ids})          # Diagnose: welche Variablen gibt es?
+        print("  Variablen (Auszug):", varset[:12])
+        print("  Beispiel-IDs:", ids[:4]); return {}
 
-    # Jede Coverage = EIN Schritt: ..._<Lauf>_PT<N>H. Nach (Lauf, Lead) gruppieren.
-    rx = re.compile(re.escape(AROME_VAR) + r"___(\d{4}-\d{2}-\d{2}T\d{2}[.:]\d{2}[.:]\d{2}Z)_PT(\d+)H$")
-    byref = {}
+    # Aktuelles API-Modell: EINE Coverage pro Lauf ("VAR___<Referenzzeit>Z[_PT1H]"); die einzelnen
+    # Vorlaufzeiten holt man ueber &subset=time(<gueltige Zeit>Z). Referenzzeit aus der ID lesen,
+    # pro Lauf bevorzugt die 1-Stunden-Summe (_PT1H).
+    rx_ref = re.compile(r"___(\d{4}-\d{2}-\d{2}T\d{2}[.:]\d{2}[.:]\d{2}Z)")
+    cand = {}
     for cid in precip:
-        m = rx.search(cid)
-        if not m:
-            continue
-        ref, lead = m.group(1), int(m.group(2))
-        byref.setdefault(ref, {})[lead] = cid
-    if not byref:
-        print("  Konnte (Lauf,Lead) nicht parsen. Beispiele:", precip[:3]); return {}
-
-    # neuesten AUSREICHEND bestueckten Lauf nehmen (>=6 Leads), sonst den juengsten
-    refs = sorted(byref, key=lambda r: r.replace(".", ":"), reverse=True)
-    chosen_ref = next((r for r in refs if len(byref[r]) >= 6), refs[0])
+        m = rx_ref.search(cid)
+        if m:
+            cand.setdefault(m.group(1), []).append(cid)
+    if not cand:
+        print("  Konnte Referenzzeit nicht parsen. Beispiele:", precip[:3]); return {}
+    def _pick(cids):
+        pt1 = [c for c in cids if c.upper().endswith("_PT1H")]
+        return pt1[0] if pt1 else cids[0]
+    chosen_ref = sorted(cand, key=lambda r: r.replace(".", ":"), reverse=True)[0]
+    cid = _pick(cand[chosen_ref])
     ref_dt = dt.datetime.strptime(chosen_ref.replace(".", ":"), "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=dt.timezone.utc)
-    leads = sorted(byref[chosen_ref])
-    print(f"AROME: Lauf {chosen_ref}, {len(leads)} Leads (bis +{leads[-1]}h)")
+    print(f"AROME: Lauf {chosen_ref}  Coverage-ID {cid}")
 
-    # 2) je Lead bis ins Vorhersagefenster GetCoverage -> kumuliertes Feld
+    # 2) je Vorlaufstunde im Fenster GetCoverage mit subset=time. "_PT1H" = 1-Stunden-Summe,
+    #    der Wert ist damit bereits ~mm/h (keine Entkumulierung noetig).
     base = now or dt.datetime.now(dt.timezone.utc)
     horizon = base + dt.timedelta(hours=max_hours)
-    cum = {}; shown = 0
-    for N in leads:
+    fields = {}; shown = 0
+    for N in range(1, 49):
         when = ref_dt + dt.timedelta(hours=N)
-        if when > horizon or N > 48:                          # weit genug / Sicherheitskappe
+        if when > horizon:
             break
-        cid = byref[chosen_ref][N]
+        if when <= base:                                       # Vergangenheit ueberspringen
+            continue
         gc = (f"{AROME_WCS}/GetCoverage?SERVICE=WCS&VERSION=2.0.1&REQUEST=GetCoverage"
               f"&format=application/wmo-grib&coverageId={cid}"
               f"&subset=time({when:%Y-%m-%dT%H:%M:%SZ})"
@@ -621,10 +628,10 @@ def arome_fields(tmp, max_hours=12, now=None, bbox=None):
         try:
             raw = _mf_get(gc)
         except Exception as e:
-            if shown < 2: print(f"  AROME GetCoverage PT{N}H fehlgeschlagen:", e); shown += 1
+            if shown < 2: print(f"  AROME GetCoverage {when:%Y-%m-%dT%H:%MZ} fehlgeschlagen:", e); shown += 1
             continue
         if raw[:4] != b"GRIB":
-            if shown < 2: print(f"  AROME PT{N}H kein GRIB; Anfang:", raw[:160]); shown += 1
+            if shown < 2: print(f"  AROME {when:%H:%MZ} kein GRIB; Anfang:", raw[:160]); shown += 1
             continue
         p = os.path.join(tmp, "arome.grib2"); open(p, "wb").write(raw)
         try:
@@ -633,36 +640,13 @@ def arome_fields(tmp, max_hours=12, now=None, bbox=None):
             if shown < 2: print("  AROME-GRIB nicht lesbar:", e); shown += 1
             continue
         if msgs:
-            cum[N] = np.clip(msgs[0][1], 0, None)
-    if not cum:
-        print("AROME: keine Felder geladen"); return {}
+            fields[when] = gaussian_filter(np.clip(msgs[0][1], 0, None), sigma=0.9)   # 1h-Summe ~ mm/h
 
-    # 3) Einheit erkennen: TOTAL_PRECIPITATION ist i. d. R. ab Laufbeginn KUMULIERT.
-    #    Pruefen, ob die Flaechenmittel monoton steigen -> dann entkumulieren (Differenz);
-    #    sonst sind die Werte schon stuendlich -> direkt verwenden.
-    order = sorted(cum)
-    means = [float(np.nanmean(cum[N])) for N in order]
-    cumulative = all(means[i] >= means[i - 1] - 1e-3 for i in range(1, len(means)))
-    print(f"AROME: {len(cum)} Leads geladen, kumulativ={cumulative}")
-
-    from scipy.ndimage import gaussian_filter
-    fields = {}; prev = None; prevN = 0
-    for N in order:
-        when = ref_dt + dt.timedelta(hours=N)
-        if cumulative:
-            inc = (cum[N] - prev) if prev is not None else cum[N]
-            dN = (N - prevN) if prev is not None else N
-            rate = np.clip(inc, 0, None) / max(dN, 1)        # mm/h
-        else:
-            rate = cum[N]                                    # bereits stuendlich
-        prev, prevN = cum[N], N
-        if base < when <= horizon:                           # nur Zukunft ausgeben
-            fields[when] = gaussian_filter(rate, sigma=0.9)
     if fields:
         mx = max(float(np.nanmax(g)) for g in fields.values())
         print(f"AROME: {len(fields)} Felder, max {mx:.1f} mm/h")
     else:
-        print("AROME: keine Zukunftsfelder im Fenster")
+        print("AROME: keine Zukunftsfelder im Fenster (Lauf evtl. veraltet)")
     return fields
 
 
