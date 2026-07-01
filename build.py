@@ -307,6 +307,9 @@ def build(local_radar=None, local_fc=None, local_icon_dir=None):
     }
     json.dump(manifest, open(os.path.join(OUT, "frames.json"), "w"))
     shutil.copyfile(os.path.join(c.HERE, "index.html"), os.path.join(OUT, "index.html"))
+    _pj = os.path.join(c.HERE, "places.js")                    # ausgelagerte Kartendaten mitkopieren
+    if os.path.exists(_pj):
+        shutil.copyfile(_pj, os.path.join(OUT, "places.js"))
     shutil.rmtree(tmp, ignore_errors=True)
     print(f"OK: {len(frames)} Frames -> {OUT}/  (now={manifest['now']})")
 
