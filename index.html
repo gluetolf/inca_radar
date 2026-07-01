@@ -15,10 +15,10 @@
   body{overflow:hidden;background:#dfe5d8;color:var(--ink)}
   #map{position:absolute;inset:0;background:#dfe5d8;z-index:0}
   .city-label{background:none;border:none;box-shadow:none;font-weight:600;font-size:12px;color:#2c3422;
-    text-shadow:0 0 3px #fff,0 0 3px #fff,0 0 6px #fff;white-space:nowrap;pointer-events:none}
+    text-shadow:0 0 3px #fff,0 0 3px #fff,0 0 6px #fff;white-space:nowrap;pointer-events:auto;cursor:pointer}
   .lake-label{background:none;border:none;box-shadow:none;font-style:italic;font-weight:500;font-size:12px;
     color:#1b5a8c;letter-spacing:.5px;transform:translate(-50%,-50%);
-    text-shadow:0 0 3px #fff,0 0 3px #fff,0 0 6px #fff;white-space:nowrap;pointer-events:none}
+    text-shadow:0 0 3px #fff,0 0 3px #fff,0 0 6px #fff;white-space:nowrap;pointer-events:auto;cursor:pointer}
   .city-dot{width:5px;height:5px;border-radius:50%;background:#2c3422;box-shadow:0 0 0 2px #fff;margin:0 auto 2px}
   .city-home .city-dot{background:var(--green);box-shadow:0 0 0 2px #fff,0 0 8px var(--green)}
   .city-home{color:var(--green-dark)}
@@ -297,9 +297,12 @@
     ["Wil",47.462,9.045,10],["Uster",47.347,8.721,10],["Dübendorf",47.397,8.618,10],["Dietikon",47.402,8.400,10],["Wetzikon",47.323,8.797,10],["Wädenswil",47.230,8.674,10],["Horgen",47.260,8.600,10],["Kloten",47.452,8.585,10],["Bülach",47.521,8.539,10],["Wettingen",47.466,8.317,10],["Wohlen",47.351,8.279,10],["Kreuzlingen",47.651,9.176,10],["Herisau",47.386,9.279,10],["Appenzell",47.331,9.409,10],["Buchs",47.166,9.477,10],["Sargans",47.046,9.443,10],["Bad Ragaz",47.005,9.503,10],["Landquart",46.964,9.563,10],["St. Moritz",46.498,9.838,10],["Schwyz",47.021,8.654,10],["Einsiedeln",47.128,8.752,10],["Altdorf",46.881,8.644,10],["Stans",46.958,8.366,10],["Sarnen",46.896,8.246,10],["Glarus",47.040,9.068,10],["Sursee",47.171,8.111,10],["Liestal",47.484,7.735,10],["Delémont",47.365,7.345,10],["Grenchen",47.192,7.397,10],["Langenthal",47.215,7.789,10],["Yverdon",46.778,6.641,10],["Vevey",46.463,6.843,10],["Nyon",46.383,6.240,10],["Morges",46.511,6.498,10],["Sierre",46.292,7.533,10],["Martigny",46.103,7.073,10],["Aigle",46.318,6.967,10],["Monthey",46.254,6.948,10],["Payerne",46.822,6.938,10],["Köniz",46.924,7.414,10],["Münsingen",46.875,7.562,10],["Lyss",47.073,7.307,10],["Langnau",46.939,7.787,10],["Frutigen",46.588,7.646,10],["Zweisimmen",46.555,7.373,10],["Saanen",46.489,7.260,10],["Lenk",46.459,7.443,10],
     ["Wilderswil",46.661,7.870,11],["Bönigen",46.683,7.890,11],["Beatenberg",46.697,7.782,11],["Mürren",46.559,7.892,11],["Reichenbach",46.617,7.696,11],["Lungern",46.787,8.158,11],["Giswil",46.834,8.190,11],["Sachseln",46.869,8.240,11],["Klosters",46.869,9.881,11],["Scuol",46.797,10.300,11],["Leukerbad",46.379,7.627,11],["Naters",46.323,7.992,11],["Stein am Rhein",47.660,8.860,11]
   ];
+  function onLabelTap(e){ map.panTo(e.target.getLatLng()); }   // Label antippen -> Karte darauf zentrieren
   var cityMarkers=CITIES.map(function(c){
-    return {mz:c[3],m:L.marker([c[1],c[2]],{interactive:false,keyboard:false,icon:L.divIcon({
-      className:'city-label',html:'<div class="city-dot"></div>'+c[0],iconSize:[0,0],iconAnchor:[0,0]})})};
+    var m=L.marker([c[1],c[2]],{interactive:true,keyboard:false,icon:L.divIcon({
+      className:'city-label',html:'<div class="city-dot"></div>'+c[0],iconSize:[0,0],iconAnchor:[0,0]})});
+    m.on('click',onLabelTap);
+    return {mz:c[3],m:m};
   });
   function updateCityZoom(){                                  // je nach Zoom Orte ein-/ausblenden
     var z=map.getZoom();
@@ -318,8 +321,10 @@
     ["Oeschinensee",46.50,7.73,11]
   ];
   var lakeMarkers=LAKES.map(function(l){
-    return {mz:l[3],m:L.marker([l[1],l[2]],{interactive:false,keyboard:false,icon:L.divIcon({
-      className:'lake-label',html:l[0],iconSize:[0,0],iconAnchor:[0,0]})})};
+    var m=L.marker([l[1],l[2]],{interactive:true,keyboard:false,icon:L.divIcon({
+      className:'lake-label',html:l[0],iconSize:[0,0],iconAnchor:[0,0]})});
+    m.on('click',onLabelTap);
+    return {mz:l[3],m:m};
   });
   function updateLakeZoom(){
     var z=map.getZoom();
@@ -349,11 +354,12 @@
   CITIES.forEach(function(c){curatedNames[c[0]]=1;});
   function updateDynLabels(){
     dynMarkers.forEach(function(m){map.removeLayer(m);}); dynMarkers=[];
-    if(map.getZoom()<10) return;                              // erst beim Hineinzoomen
+    var touch = (window.matchMedia && window.matchMedia('(pointer:coarse)').matches);
+    if(map.getZoom() < (touch?11:10)) return;                 // auf Touch erst ab Zoom 11 (weniger Gedraenge)
     var b=map.getBounds(),s=b.getSouth(),n=b.getNorth(),w=b.getWest(),e=b.getEast();
-    // Entzerrung per Bildschirm-Raster: pro Zelle nur EIN Label. Gleichmaessige Verteilung,
-    // mehr Labels beim Hineinzoomen, stabil beim Verschieben (kein hartes Stueck-Limit mehr).
-    var CW=84, CH=22, occ={};
+    // Entzerrung per Bildschirm-Raster: pro Zelle nur EIN Label. Auf Touch-Geraeten groessere
+    // Zellen -> weniger, klar getrennte Labels (kein Ueberlappen auf Handy/iPad).
+    var CW=touch?128:84, CH=touch?34:22, occ={};
     function take(pt){
       var k=Math.floor(pt.x/CW)+'_'+Math.floor(pt.y/CH);
       if(occ[k]) return false; occ[k]=1; return true;
@@ -369,8 +375,9 @@
       if(p[1]<s||p[1]>n||p[2]<w||p[2]>e) continue;            // ausserhalb der Ansicht
       if(curatedNames[p[0]]) continue;                        // schon als festes Label vorhanden
       if(!take(map.latLngToContainerPoint([p[1],p[2]]))) continue;  // Zelle belegt -> ueberspringen
-      dynMarkers.push(L.marker([p[1],p[2]],{interactive:false,keyboard:false,icon:L.divIcon({
-        className:'city-label',html:'<div class="city-dot"></div>'+p[0],iconSize:[0,0],iconAnchor:[0,0]})}).addTo(map));
+      var dm=L.marker([p[1],p[2]],{interactive:true,keyboard:false,icon:L.divIcon({
+        className:'city-label',html:'<div class="city-dot"></div>'+p[0],iconSize:[0,0],iconAnchor:[0,0]})}).addTo(map);
+      dm.on('click',onLabelTap); dynMarkers.push(dm);
       placed++;
     }
   }
