@@ -67,23 +67,29 @@ DISPLAY_FLOOR = float(os.environ.get("DISPLAY_FLOOR", "0.3"))
 # dieses Band (mm/h) sanft von 0 auf voll einblenden, statt hart abzuschneiden.
 EDGE_FADE = float(os.environ.get("EDGE_FADE", "0.12"))
 
+# Eigene, tiefere Untergrenze NUR fuers Radar (gemessene Daten): leichter Regen/Niesel soll
+# sichtbar sein. Die Vorhersage nutzt weiter DISPLAY_FLOOR (Modelle sind ganz tief unzuverlaessig).
+RADAR_FLOOR = float(os.environ.get("RADAR_FLOOR", "0.1"))
 
-def colorize(arr):
+
+def colorize(arr, floor=None):
     """2D-Feld (mm/h, NaN = keine Daten) -> RGBA-Bild nach SCALE.
-    Werte <= DISPLAY_FLOOR und NaN bleiben transparent (Alpha 0)."""
+    Werte <= floor (Standard: DISPLAY_FLOOR) und NaN bleiben transparent (Alpha 0)."""
+    if floor is None:
+        floor = DISPLAY_FLOOR
     h, w = arr.shape
     rgba = np.zeros((h, w, 4), dtype=np.uint8)         # Start: alles transparent
     a = np.nan_to_num(arr, nan=0.0)                    # NaN -> 0 (faellt in keine Stufe)
-    prev = DISPLAY_FLOOR                               # Untergrenze: leichter Niederschlag wird nicht gezeigt
+    prev = floor                                       # Untergrenze: leichter Niederschlag darunter wird nicht gezeigt
     for thr, col in SCALE:                             # jede Stufe (prev, thr] einfaerben
-        if thr <= DISPLAY_FLOOR:                       # Baender unterhalb der Untergrenze ueberspringen
+        if thr <= floor:                              # Baender unterhalb der Untergrenze ueberspringen
             continue
         rgba[(a > prev) & (a <= thr)] = col
         prev = thr
     # Weicher Rand: Deckkraft direkt oberhalb der Untergrenze sanft einblenden, damit die
     # Aussenkante nicht gezackt/ausgefranst wirkt. Werte und Farben bleiben unveraendert.
     if EDGE_FADE > 0:
-        edge = np.clip((a - DISPLAY_FLOOR) / EDGE_FADE, 0.0, 1.0).astype("float32")
+        edge = np.clip((a - floor) / EDGE_FADE, 0.0, 1.0).astype("float32")
         rgba[..., 3] = (rgba[..., 3].astype("float32") * edge).astype("uint8")
     return rgba
 
@@ -140,7 +146,7 @@ def radar_grid(h5path):
 def render_radar(h5path, out_png):
     """RZC-ODIM-Datei -> eingefaerbtes PNG. Rueckgabe: (datetime_utc, max_mmh)."""
     when, dst = radar_grid(h5path)
-    Image.fromarray(colorize(dst), "RGBA").save(out_png)
+    Image.fromarray(colorize(dst, floor=RADAR_FLOOR), "RGBA").save(out_png)
     mxv = np.nanmax(dst)
     return when, (round(float(mxv), 1) if np.isfinite(mxv) else 0.0)
 
@@ -419,7 +425,7 @@ def icond2_fields(tmp, max_hours=12, now=None):
         url = f"{DWD_ICOND2_BASE}/{run:%H}/tot_prec/"
         datestr = run.strftime("%Y%m%d%H")
         try:
-            html = _http(url).decode("utf-8", "ignore")     # Verzeichnis-Listing (HTML)
+            html = _http(url, timeout=20).decode("utf-8", "ignore")  # Verzeichnis-Listing (klein -> kurzes Timeout)
         except Exception:
             continue
         names = re.findall(r'href="([^"]+)"', html)
