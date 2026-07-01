@@ -393,7 +393,7 @@
     lakeSorted.forEach(function(o){
       var show=false;
       if(z>=o.mz){
-        var pt=map.latLngToContainerPoint(o.m.getLatLng()), lw=textW(o.m._name,_fLake);
+        var pt=map.project(o.m.getLatLng()), lw=textW(o.m._name,_fLake);
         if(box(pt.x-lw/2, pt.y-LH/2, lw, false)){ box(pt.x-lw/2, pt.y-LH/2, lw, true); show=true; }
       }
       var on=map.hasLayer(o.m);
@@ -403,7 +403,7 @@
     //    (z.B. Interlaken/Bönigen) ueberlappen nicht mehr; das unwichtigere blendet aus.
     citySorted.forEach(function(o){
       var show=false;
-      if(z>=o.mz){ var pt=map.latLngToContainerPoint(o.m.getLatLng()), w=12+textW(o.m._name,_fPlace);
+      if(z>=o.mz){ var pt=map.project(o.m.getLatLng()), w=12+textW(o.m._name,_fPlace);
         if(box(pt.x,pt.y,w,false)){ box(pt.x,pt.y,w,true); show=true; } }
       var on=map.hasLayer(o.m);
       if(show && !on) o.m.addTo(map); else if(!show && on) map.removeLayer(o.m);
@@ -416,7 +416,7 @@
       for(var i=0;i<PLACES.length && placed<MAX;i++){var p=PLACES[i];
         if(p[1]<s||p[1]>n||p[2]<w||p[2]>e) continue;          // ausserhalb der Ansicht
         if(curatedNames[p[0]]) continue;                      // schon als festes Label vorhanden
-        var pt=map.latLngToContainerPoint([p[1],p[2]]);
+        var pt=map.project([p[1],p[2]]);
         var wpx=12+textW(p[0],_fPlace);                       // Punkt (~12px) + Textbreite
         if(!box(pt.x, pt.y, wpx, false)) continue;            // Bereich belegt -> ueberspringen
         box(pt.x, pt.y, wpx, true);                           // Bereich reservieren
@@ -431,7 +431,7 @@
     peakSorted.forEach(function(o){
       var show=false;
       if(z>=o.mz){
-        var pt=map.latLngToContainerPoint(o.m.getLatLng()), w=12+textW(o.label,_fPeak);
+        var pt=map.project(o.m.getLatLng()), w=12+textW(o.label,_fPeak);
         if(box(pt.x-4, pt.y-12, w, false)){ box(pt.x-4, pt.y-12, w, true); show=true; }
       }
       var on=map.hasLayer(o.m);
