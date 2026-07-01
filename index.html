@@ -189,6 +189,7 @@
   // ---- Ortsname am Fadenkreuz: exakte Rueckwaerts-Geokodierung des Mittelpunkts (OpenStreetMap/Nominatim).
   //      Liefert den Ort/Weiler, der GENAU an diesem Punkt liegt - nicht den naechsten Listenpunkt. In- und Ausland. ----
   var rgeo={key:null,name:null,pending:false,seq:0,cache:{},timer:null};
+  var pinned=null;   // vom Label-Klick gesetzt: {name,key} -> genau diesen Namen anzeigen statt Geokodierung
   function keyFor(ll){return ll.lat.toFixed(3)+','+ll.lng.toFixed(3);}        // ~100-m-Raster fuer Cache
   function pickName(a,j){
     var stadt    = a.city || a.town || a.municipality;
@@ -199,6 +200,10 @@
   }
   function maybeFetchPlace(ll){
     var key=keyFor(ll); rgeo.key=key;
+    if(pinned){                                                // ein Label wurde angeklickt
+      if(pinned.key===key){ rgeo.name=pinned.name; rgeo.pending=false; return; } // -> genau diesen Namen zeigen
+      pinned=null;                                             // Karte woanders hin bewegt -> Pin loesen
+    }
     if(key in rgeo.cache){rgeo.name=rgeo.cache[key];rgeo.pending=false;return;} // schon bekannt
     rgeo.name=null; rgeo.pending=true; clearTimeout(rgeo.timer);
     var seq=++rgeo.seq;
@@ -297,7 +302,7 @@
     ["Wil",47.462,9.045,10],["Uster",47.347,8.721,10],["Dübendorf",47.397,8.618,10],["Dietikon",47.402,8.400,10],["Wetzikon",47.323,8.797,10],["Wädenswil",47.230,8.674,10],["Horgen",47.260,8.600,10],["Kloten",47.452,8.585,10],["Bülach",47.521,8.539,10],["Wettingen",47.466,8.317,10],["Wohlen",47.351,8.279,10],["Kreuzlingen",47.651,9.176,10],["Herisau",47.386,9.279,10],["Appenzell",47.331,9.409,10],["Buchs",47.166,9.477,10],["Sargans",47.046,9.443,10],["Bad Ragaz",47.005,9.503,10],["Landquart",46.964,9.563,10],["St. Moritz",46.498,9.838,10],["Schwyz",47.021,8.654,10],["Einsiedeln",47.128,8.752,10],["Altdorf",46.881,8.644,10],["Stans",46.958,8.366,10],["Sarnen",46.896,8.246,10],["Glarus",47.040,9.068,10],["Sursee",47.171,8.111,10],["Liestal",47.484,7.735,10],["Delémont",47.365,7.345,10],["Grenchen",47.192,7.397,10],["Langenthal",47.215,7.789,10],["Yverdon",46.778,6.641,10],["Vevey",46.463,6.843,10],["Nyon",46.383,6.240,10],["Morges",46.511,6.498,10],["Sierre",46.292,7.533,10],["Martigny",46.103,7.073,10],["Aigle",46.318,6.967,10],["Monthey",46.254,6.948,10],["Payerne",46.822,6.938,10],["Köniz",46.924,7.414,10],["Münsingen",46.875,7.562,10],["Lyss",47.073,7.307,10],["Langnau",46.939,7.787,10],["Frutigen",46.588,7.646,10],["Zweisimmen",46.555,7.373,10],["Saanen",46.489,7.260,10],["Lenk",46.459,7.443,10],
     ["Wilderswil",46.661,7.870,11],["Bönigen",46.683,7.890,11],["Beatenberg",46.697,7.782,11],["Mürren",46.559,7.892,11],["Reichenbach",46.617,7.696,11],["Lungern",46.787,8.158,11],["Giswil",46.834,8.190,11],["Sachseln",46.869,8.240,11],["Klosters",46.869,9.881,11],["Scuol",46.797,10.300,11],["Leukerbad",46.379,7.627,11],["Naters",46.323,7.992,11],["Stein am Rhein",47.660,8.860,11]
   ];
-  function onLabelTap(e){ map.panTo(e.target.getLatLng()); }   // Label antippen -> Karte darauf zentrieren
+  function onLabelTap(e){ var ll=e.target.getLatLng(); pinned={name:e.target._name, key:keyFor(ll)}; map.panTo(ll); }   // Label antippen -> zentrieren + genau diesen Namen anzeigen
   var cityMarkers=CITIES.map(function(c){
     var m=L.marker([c[1],c[2]],{interactive:true,keyboard:false,icon:L.divIcon({
       className:'city-label',html:'<div class="city-dot"></div>'+c[0],iconSize:[0,0],iconAnchor:[0,0]})});
@@ -315,7 +320,7 @@
   map.on('zoomend',updateCityZoom); updateCityZoom();
   // ---- Seenamen: eigene Beschriftung (die Hintergrundkarte zeigt in der CH keine Labels) ----
   var LAKES=[
-    ["Genfersee",46.45,6.49,8],["Neuenburgersee",46.91,6.86,8],["Vierwaldstättersee",47.00,8.43,8],["Zürichsee",47.22,8.69,8],
+    ["Genfersee",46.45,6.49,8],["Neuenburgersee",46.91,6.86,8],["Vierwaldstättersee",47.00,8.43,8],["Zürichsee",47.22,8.69,8],["Bodensee",47.61,9.30,8],
     ["Thunersee",46.68,7.72,9],["Brienzersee",46.72,7.96,9],["Bielersee",47.08,7.17,9],["Zugersee",47.13,8.49,9],["Walensee",47.12,9.19,9],["Lago di Lugano",46.00,8.97,9],["Murtensee",46.93,7.08,9],["Sempachersee",47.14,8.15,9],["Hallwilersee",47.28,8.21,9],["Greifensee",47.35,8.68,9],["Sarnersee",46.87,8.23,9],["Lac de la Gruyère",46.66,7.10,9],
     ["Ägerisee",47.12,8.63,10],["Sihlsee",47.13,8.78,10],["Pfäffikersee",47.345,8.785,10],["Baldeggersee",47.20,8.26,10],["Lungerersee",46.785,8.16,10],["Klöntalersee",47.025,8.99,10],["Wägitalersee",47.08,8.89,10],["Lac de Joux",46.62,6.27,10],["Silvaplanersee",46.45,9.79,10],["Silsersee",46.42,9.74,10],
     ["Oeschinensee",46.50,7.73,11]
@@ -326,15 +331,7 @@
     m._name=l[0]; m.on('click',onLabelTap);
     return {mz:l[3],m:m};
   });
-  function updateLakeZoom(){
-    var z=map.getZoom();
-    lakeMarkers.forEach(function(o){
-      var on=map.hasLayer(o.m);
-      if(z>=o.mz && !on) o.m.addTo(map);
-      else if(z<o.mz && on) map.removeLayer(o.m);
-    });
-  }
-  map.on('zoomend',updateLakeZoom); updateLakeZoom();
+  // (Seen-Labels werden gemeinsam mit den Ortslabels in updateLabels() platziert & entzerrt - siehe unten)
   // Grosser Ortsdatensatz (eingebettet, ~4000 Orte) fuer die genaue Naechster-Ort-Anzeige.
   var PLACES=(window.PLACES&&window.PLACES.length)?window.PLACES:CITIES.map(function(c){return [c[0],c[1],c[2]];});
   var CLOSE_KM=3, FAR_KM=12;          // <=3 km: Ortschaft; <=12 km: Gemeinde; weiter: gar nichts
@@ -360,13 +357,11 @@
     var k=font+'|'+name; if(_wCache[k]!=null) return _wCache[k];
     _mctx.font=font; var v=_mctx.measureText(name).width; _wCache[k]=v; return v;
   }
-  function updateDynLabels(){
-    dynMarkers.forEach(function(m){map.removeLayer(m);}); dynMarkers=[];
+  function updateLabels(){
+    var z=map.getZoom();
     var touch = (window.matchMedia && window.matchMedia('(pointer:coarse)').matches);
-    if(map.getZoom() < (touch?11:10)) return;                 // auf Touch erst ab Zoom 11
-    var b=map.getBounds(),s=b.getSouth(),n=b.getNorth(),w=b.getWest(),e=b.getEast();
     // Entzerrung anhand des ECHTEN Textkastens (gemessene Breite + Abstand): ein Label wird
-    // nur gesetzt, wenn sein Bereich frei ist. Kein Ueberlappen, und automatisch luftiger.
+    // nur gesetzt, wenn sein Bereich frei ist. Reihenfolge = Prioritaet: Staedte > Seen > Orte.
     var GRID=10, MX=(touch?14:12), MY=(touch?9:7), LH=15, occ={};
     function box(x,y,wpx,set){                                // x,y = obere linke Ecke des Textbereichs
       var x0=Math.floor((x-MX)/GRID), x1=Math.floor((x+wpx+MX)/GRID);
@@ -377,14 +372,25 @@
       }
       return true;
     }
-    cityMarkers.forEach(function(o){                          // feste Stadt-Labels (mit Textbreite) blockieren
+    // 1) sichtbare feste Stadt-Labels reservieren (hoechste Prioritaet)
+    cityMarkers.forEach(function(o){
       if(map.hasLayer(o.m)){ var pt=map.latLngToContainerPoint(o.m.getLatLng());
         box(pt.x, pt.y, 12+textW(o.m._name,_fPlace), true); }
     });
-    lakeMarkers.forEach(function(o){                          // Seen-Labels (zentriert) blockieren
-      if(map.hasLayer(o.m)){ var pt=map.latLngToContainerPoint(o.m.getLatLng());
-        var lw=textW(o.m._name,_fLake); box(pt.x-lw/2, pt.y-LH/2, lw, true); }
+    // 2) Seen-Labels: nach Zoomstufe UND nur wenn kollisionsfrei (sonst ausblenden)
+    lakeMarkers.forEach(function(o){
+      var show=false;
+      if(z>=o.mz){
+        var pt=map.latLngToContainerPoint(o.m.getLatLng()), lw=textW(o.m._name,_fLake);
+        if(box(pt.x-lw/2, pt.y-LH/2, lw, false)){ box(pt.x-lw/2, pt.y-LH/2, lw, true); show=true; }
+      }
+      var on=map.hasLayer(o.m);
+      if(show && !on) o.m.addTo(map); else if(!show && on) map.removeLayer(o.m);
     });
+    // 3) dynamische Ortslabels - am Desktop erst ab Zoom 12, auf Touch ab 11
+    dynMarkers.forEach(function(m){map.removeLayer(m);}); dynMarkers=[];
+    if(z < (touch?11:12)) return;
+    var b=map.getBounds(),s=b.getSouth(),n=b.getNorth(),w=b.getWest(),e=b.getEast();
     var placed=0, MAX=500;                                    // reine Sicherheitsgrenze
     for(var i=0;i<PLACES.length && placed<MAX;i++){var p=PLACES[i];
       if(p[1]<s||p[1]>n||p[2]<w||p[2]>e) continue;            // ausserhalb der Ansicht
@@ -395,11 +401,11 @@
       box(pt.x, pt.y, wpx, true);                             // Bereich reservieren
       var dm=L.marker([p[1],p[2]],{interactive:true,keyboard:false,icon:L.divIcon({
         className:'city-label',html:'<div class="city-dot"></div>'+p[0],iconSize:[0,0],iconAnchor:[0,0]})}).addTo(map);
-      dm.on('click',onLabelTap); dynMarkers.push(dm);
+      dm._name=p[0]; dm.on('click',onLabelTap); dynMarkers.push(dm);
       placed++;
     }
   }
-  map.on('moveend',updateDynLabels); updateDynLabels();
+  map.on('moveend',updateLabels); updateLabels();
   // ---- Ortssuche: sofort lokal (~4000 CH-Orte), optional weltweit per Klick ----
   function stripDia(s){return s.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();}        // ü -> u
   function expandUml(s){return s.toLowerCase().replace(/ä/g,'ae').replace(/ö/g,'oe').replace(/ü/g,'ue').replace(/ß/g,'ss');} // ü -> ue
