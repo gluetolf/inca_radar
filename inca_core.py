@@ -606,48 +606,56 @@ def arome_fields(tmp, max_hours=12, now=None, bbox=None):
     def _pick(cids):
         pt1 = [c for c in cids if c.upper().endswith("_PT1H")]
         return pt1[0] if pt1 else cids[0]
-    chosen_ref = sorted(cand, key=lambda r: r.replace(".", ":"), reverse=True)[0]
-    cid = _pick(cand[chosen_ref])
-    ref_dt = dt.datetime.strptime(chosen_ref.replace(".", ":"), "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=dt.timezone.utc)
-    print(f"AROME: Lauf {chosen_ref}  Coverage-ID {cid}")
 
     # 2) je Vorlaufstunde im Fenster GetCoverage mit subset=time. "_PT1H" = 1-Stunden-Summe,
     #    der Wert ist damit bereits ~mm/h (keine Entkumulierung noetig).
     base = now or dt.datetime.now(dt.timezone.utc)
     horizon = base + dt.timedelta(hours=max_hours)
-    fields = {}; shown = 0
-    for N in range(1, 49):
-        when = ref_dt + dt.timedelta(hours=N)
-        if when > horizon:
-            break
-        if when <= base:                                       # Vergangenheit ueberspringen
-            continue
-        gc = (f"{AROME_WCS}/GetCoverage?SERVICE=WCS&VERSION=2.0.1&REQUEST=GetCoverage"
-              f"&format=application/wmo-grib&coverageId={cid}"
-              f"&subset=time({when:%Y-%m-%dT%H:%M:%SZ})"
-              f"&subset=lat({latS},{latN})&subset=long({lonW},{lonE})")
-        try:
-            raw = _mf_get(gc)
-        except Exception as e:
-            if shown < 2: print(f"  AROME GetCoverage {when:%Y-%m-%dT%H:%MZ} fehlgeschlagen:", e); shown += 1
-            continue
-        if raw[:4] != b"GRIB":
-            if shown < 2: print(f"  AROME {when:%H:%MZ} kein GRIB; Anfang:", raw[:160]); shown += 1
-            continue
-        p = os.path.join(tmp, "arome.grib2"); open(p, "wb").write(raw)
-        try:
-            msgs = _regular_grib_messages(p)
-        except Exception as e:
-            if shown < 2: print("  AROME-GRIB nicht lesbar:", e); shown += 1
-            continue
-        if msgs:
-            fields[when] = gaussian_filter(np.clip(msgs[0][1], 0, None), sigma=0.9)   # 1h-Summe ~ mm/h
+    refs_sorted = sorted(cand, key=lambda r: r.replace(".", ":"), reverse=True)
 
-    if fields:
-        mx = max(float(np.nanmax(g)) for g in fields.values())
-        print(f"AROME: {len(fields)} Felder, max {mx:.1f} mm/h")
-    else:
-        print("AROME: keine Zukunftsfelder im Fenster (Lauf evtl. veraltet)")
+    # Neuesten Lauf zuerst. Ist er noch frisch/unvollstaendig (GetCoverage -> 404), auf bis zu
+    # zwei aeltere, bereits fertig publizierte Laeufe ausweichen, statt AROME ganz fallenzulassen.
+    fields = {}
+    for chosen_ref in refs_sorted[:3]:
+        cid = _pick(cand[chosen_ref])
+        ref_dt = dt.datetime.strptime(chosen_ref.replace(".", ":"), "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=dt.timezone.utc)
+        print(f"AROME: versuche Lauf {chosen_ref}  Coverage-ID {cid}")
+        got = {}; shown = 0
+        for N in range(1, 49):
+            when = ref_dt + dt.timedelta(hours=N)
+            if when > horizon:
+                break
+            if when <= base:                                       # Vergangenheit ueberspringen
+                continue
+            gc = (f"{AROME_WCS}/GetCoverage?SERVICE=WCS&VERSION=2.0.1&REQUEST=GetCoverage"
+                  f"&format=application/wmo-grib&coverageId={cid}"
+                  f"&subset=time({when:%Y-%m-%dT%H:%M:%SZ})"
+                  f"&subset=lat({latS},{latN})&subset=long({lonW},{lonE})")
+            try:
+                raw = _mf_get(gc)
+            except Exception as e:
+                if shown < 2: print(f"  AROME GetCoverage {when:%Y-%m-%dT%H:%MZ} fehlgeschlagen:", e); shown += 1
+                continue
+            if raw[:4] != b"GRIB":
+                if shown < 2: print(f"  AROME {when:%H:%MZ} kein GRIB; Anfang:", raw[:160]); shown += 1
+                continue
+            p = os.path.join(tmp, "arome.grib2"); open(p, "wb").write(raw)
+            try:
+                msgs = _regular_grib_messages(p)
+            except Exception as e:
+                if shown < 2: print("  AROME-GRIB nicht lesbar:", e); shown += 1
+                continue
+            if msgs:
+                got[when] = gaussian_filter(np.clip(msgs[0][1], 0, None), sigma=0.9)   # 1h-Summe ~ mm/h
+        if got:
+            fields = got
+            mx = max(float(np.nanmax(g)) for g in fields.values())
+            print(f"AROME: {len(fields)} Felder aus Lauf {chosen_ref}, max {mx:.1f} mm/h")
+            break
+        print(f"  AROME: Lauf {chosen_ref} liefert (noch) keine Felder -> aelterer Lauf")
+
+    if not fields:
+        print("AROME: keine Zukunftsfelder im Fenster (alle Laeufe unvollstaendig)")
     return fields
 
 
