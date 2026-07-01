@@ -716,9 +716,13 @@ NOWCAST_CANDIDATES = [
 ]
 
 
-def _get_json(url, timeout=60):
+def _get_json(url, timeout=60, no_cache=False):
     import urllib.request
-    req = urllib.request.Request(url, headers={"Accept": "application/json"})
+    headers = {"Accept": "application/json"}
+    if no_cache:                                  # CDN zwingen, frisch von der Quelle zu liefern
+        headers["Cache-Control"] = "no-cache, no-store, max-age=0"
+        headers["Pragma"] = "no-cache"
+    req = urllib.request.Request(url, headers=headers)
     with urllib.request.urlopen(req, timeout=timeout) as r:
         return json.load(r)
 
@@ -758,7 +762,8 @@ def radar_latest_assets(limit=24):
     Ueber die Items-LISTE der Collection - dieser Endpunkt wird frisch ausgeliefert.
     (Der gezielte Tages-Item-Endpunkt /items/<id> lieferte zwischengespeicherte, veraltete
     Daten, selbst mit Cache-Buster - daher bewusst wieder die Liste.)"""
-    data = _get_json(f"{STAC}/collections/{RADAR_COLLECTION}/items?limit=200")
+    bust = int(dt.datetime.now(dt.timezone.utc).timestamp())
+    data = _get_json(f"{STAC}/collections/{RADAR_COLLECTION}/items?limit=200&_={bust}", no_cache=True)
     found = {}   # datetime -> href
     for feat in data.get("features", []):
         found.update(_collect_rzc(feat.get("assets", {})))
