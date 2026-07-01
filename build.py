@@ -130,7 +130,7 @@ def build(local_radar=None, local_fc=None, local_icon_dir=None):
         res = {}
         t_models = dt.datetime.now()
         import time as _t, multiprocessing as mp
-        MODEL_TIMEOUT = float(os.environ.get("MODEL_TIMEOUT", "240"))   # hartes Limit je Modell (Sekunden)
+        MODEL_TIMEOUT = float(os.environ.get("MODEL_TIMEOUT", "150"))   # hartes Limit je Modell (Sekunden)
         try:
             ctx = mp.get_context("fork")
             procs = []
