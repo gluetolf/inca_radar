@@ -38,17 +38,35 @@ jobs:
           METEOFRANCE_TOKEN: ${{ secrets.METEOFRANCE_TOKEN }}
         run: python build.py
 
-      # ./site/ per FTP hochladen - STANDARD-Weg: eine Verbindung, Dateien nacheinander.
-      # Die Action vergleicht Datei-Hashes und laedt nur GEAENDERTE Dateien hoch; dank der
-      # Zeitstempel-Namen bleiben die meisten Radar-/Vorhersagebilder unveraendert.
+      # ./site/ per FTP hochladen - robust gegen die zeitweisen METAhost-Timeouts:
+      #  * EINE Verbindung, sequentiell (parallel=1) -> schonend fuer den Host
+      #  * Keepalive/Reconnect -> haelt die Kontrollverbindung offen
+      #  * der GANZE Upload wird bei Fehler bis zu 4x mit 30s Pause wiederholt
+      #  * mirror --ignore-time laedt nur geaenderte Dateien; frames.json wird IMMER
+      #    frisch nachgeschoben (gleiche Groesse, aber neuer Inhalt pro Build)
       - name: Per FTP auf METAhost laden
-        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
-        with:
-          server:     ${{ secrets.FTP_SERVER }}
-          username:   ${{ secrets.FTP_USERNAME }}
-          password:   ${{ secrets.FTP_PASSWORD }}
-          server-dir: ${{ secrets.FTP_SERVER_DIR }}
-          local-dir:  ./site/
-          protocol:   ftps
-          timeout:    60000
-          log-level:  minimal
+        env:
+          FTP_SERVER:     ${{ secrets.FTP_SERVER }}
+          FTP_USERNAME:   ${{ secrets.FTP_USERNAME }}
+          FTP_PASSWORD:   ${{ secrets.FTP_PASSWORD }}
+          FTP_SERVER_DIR: ${{ secrets.FTP_SERVER_DIR }}
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq lftp >/dev/null
+          CMDS="set cmd:fail-exit true; \
+                set net:timeout 30; set net:max-retries 2; set net:persist-retries 3; \
+                set net:reconnect-interval-base 5; set net:reconnect-interval-multiplier 1; \
+                set ftp:passive-mode true; set ftp:ssl-force true; set ftp:ssl-protect-data true; \
+                set ssl:verify-certificate no; set mirror:parallel-transfer-count 1; \
+                cd \"$FTP_SERVER_DIR\"; \
+                mirror -R --ignore-time --delete ./site/ .; \
+                put ./site/frames.json; \
+                bye"
+          n=1
+          until lftp -u "$FTP_USERNAME","$FTP_PASSWORD" -e "$CMDS" "$FTP_SERVER"; do
+            if [ "$n" -ge 4 ]; then
+              echo "::error::FTP nach $n Versuchen fehlgeschlagen (METAhost-Timeout)"; exit 1
+            fi
+            echo "FTP-Versuch $n fehlgeschlagen - warte 30 s und versuche erneut..."
+            sleep 30; n=$((n+1))
+          done
+          echo "FTP-Upload erfolgreich (Versuch $n)"
