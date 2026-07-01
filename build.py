@@ -104,11 +104,6 @@ def build(local_radar=None, local_fc=None, local_icon_dir=None):
                 print("  letztes Radarfeld nicht verfuegbar:", e)
             span = f"{rendered[0][0].strftime('%H:%M')}–{rendered[-1][0].strftime('%H:%M')} UTC"
             print(f"Radar: {len(rendered)} Bilder ({span})")
-            _clock = dt.datetime.now(dt.timezone.utc)
-            _age = (_clock - now).total_seconds() / 60.0
-            print(f"  >> DIAGNOSE: Build-Uhr {_clock:%Y-%m-%dT%H:%MZ} | neuestes Radarbild {now:%H:%M}Z "
-                  f"| beim Abruf {_age:.0f} min alt "
-                  f"({'QUELLE/CACHE liefert Altes' if _age > 15 else 'frisch'})")
         else:
             print("Radar: 0 Bilder")
     except Exception as e:

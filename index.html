@@ -583,9 +583,13 @@
     var dot = document.querySelector('.status .live');
     if(!nowMs){el.textContent='lädt…';return;}
     var ageMin = Math.max(0, Math.round((Date.now() - nowMs) / 60000));
-    var age = ageMin < 1 ? 'gerade aktualisiert' : ('vor ' + ageMin + ' Min');
-    el.textContent = "Stand " + hm(new Date(nowMs)) + " · " + age;
-    if(dot) dot.style.background = ageMin > 45 ? '#d64545' : (ageMin > 25 ? '#e0a32e' : '');
+    if(ageMin > 20){                                  // Quelle hängt -> ehrlich benennen statt still alt anzeigen
+      el.textContent = "⚠ MeteoSchweiz-Daten verzögert · Stand " + hm(new Date(nowMs)) + " · vor " + ageMin + " Min";
+    } else {
+      var age = ageMin < 1 ? 'gerade aktualisiert' : ('vor ' + ageMin + ' Min');
+      el.textContent = "Stand " + hm(new Date(nowMs)) + " · " + age;
+    }
+    if(dot) dot.style.background = ageMin > 45 ? '#d64545' : (ageMin > 20 ? '#e0a32e' : '');
   }
   function fail(msg){if(frames.length)return;document.getElementById('loadtext').innerHTML="⚠️ "+msg;}
   // Manifest laden (immer cache-frei: ?Zeitstempel + no-store)
