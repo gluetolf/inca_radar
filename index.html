@@ -482,7 +482,7 @@
   function label(fr){
     var t=new Date(fr.time).getTime();
     if(fr.kind==='forecast'){var h=Math.round((t-nowMs)/3.6e6);return {txt:(h<1?'+'+Math.round((t-nowMs)/6e4)+' Min':'+'+h+' h'),cls:'fc'};}
-    var dm=Math.round((nowMs-t)/6e4);
+    var dm=Math.round((Date.now()-t)/6e4);                    // echtes Alter gegen die Uhr (neuestes Bild ist nie exakt "jetzt")
     if(dm<=2) return {txt:'Jetzt',cls:'now'};
     return {txt:'vor '+dm+' Min',cls:'past'};
   }

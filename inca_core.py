@@ -776,8 +776,9 @@ def radar_latest_assets(limit=24):
     Gesamtliste zurueck (falls die ID-Form mal abweicht oder das Tages-Item fehlt)."""
     def fetch_day(d):
         item_id = d.strftime("%Y%m%d") + "-ch"
+        bust = int(dt.datetime.now(dt.timezone.utc).timestamp())   # Cache-Buster: frische Version erzwingen
         try:
-            feat = _get_json(f"{STAC}/collections/{RADAR_COLLECTION}/items/{item_id}")
+            feat = _get_json(f"{STAC}/collections/{RADAR_COLLECTION}/items/{item_id}?nocache={bust}")
             return _collect_rzc(feat.get("assets", {}))
         except Exception as e:
             print(f"  Radar-Tagesitem {item_id} nicht abrufbar: {e}")
