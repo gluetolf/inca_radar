@@ -185,7 +185,7 @@
   map.on('moveend',writeHash); writeHash();
   // Fadenkreuz-Modell: der angezeigte Wert gilt immer fuer die Kartenmitte (kein Tipp-Pin).
   function refreshCenter(){ selLatLng=map.getCenter(); maybeFetchPlace(selLatLng); updateReadout(); }
-  map.on('moveend',refreshCenter);
+  map.on('moveend',refreshCenter); setTimeout(refreshCenter,0);  // beim Laden/Reload einmal aktiv abfragen
   // ---- Ortsname am Fadenkreuz: exakte Rueckwaerts-Geokodierung des Mittelpunkts (OpenStreetMap/Nominatim).
   //      Liefert den Ort/Weiler, der GENAU an diesem Punkt liegt - nicht den naechsten Listenpunkt. In- und Ausland. ----
   var rgeo={key:null,name:null,pending:false,seq:0,cache:{},timer:null};
