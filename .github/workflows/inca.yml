@@ -61,7 +61,7 @@ jobs:
                 echo '--- Zielverzeichnis:'; pwd; \
                 echo '--- Uebertrage geaenderte Dateien:'; \
                 mirror -R -v --ignore-time --delete ./site/ .; \
-                echo '--- frames.json erzwingen:'; put -v ./site/frames.json; \
+                echo '--- frames.json erzwingen:'; put ./site/frames.json; \
                 echo '--- Kontrolle frames.json auf dem Server:'; cls -l frames.json; \
                 bye"
           n=1
