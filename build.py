@@ -307,9 +307,14 @@ def build(local_radar=None, local_fc=None, local_icon_dir=None):
     }
     json.dump(manifest, open(os.path.join(OUT, "frames.json"), "w"))
     shutil.copyfile(os.path.join(c.HERE, "index.html"), os.path.join(OUT, "index.html"))
+    _aux = []
     _pj = os.path.join(c.HERE, "places.js")                    # ausgelagerte Kartendaten mitkopieren
     if os.path.exists(_pj):
-        shutil.copyfile(_pj, os.path.join(OUT, "places.js"))
+        shutil.copyfile(_pj, os.path.join(OUT, "places.js")); _aux.append("places.js")
+    _pk = os.path.join(c.HERE, "peaks.js")                     # Gipfeldaten mitkopieren
+    if os.path.exists(_pk):
+        shutil.copyfile(_pk, os.path.join(OUT, "peaks.js")); _aux.append("peaks.js")
+    print("Mitkopiert ins site/:", ", ".join(_aux) if _aux else "(keine Zusatzdateien gefunden!)")
     shutil.rmtree(tmp, ignore_errors=True)
     print(f"OK: {len(frames)} Frames -> {OUT}/  (now={manifest['now']})")
 
