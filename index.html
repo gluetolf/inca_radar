@@ -230,6 +230,9 @@
   // Label-Ebene, exakt entlang der Schweizer Grenze ausgespart: im Ausland Ortsnamen aus der
   // Basiskarte, in der Schweiz unsere eigenen Labels (keine Doppelung, kein grobes Rechteck mehr).
   map.createPane('lbl'); map.getPane('lbl').style.zIndex=450; map.getPane('lbl').style.pointerEvents='none';
+  // Gipfel-Ebene: zwischen Basiskarte (tilePane 200) und Niederschlag (overlayPane 400) ->
+  // Berg-Labels wirken wie Teil der Karte und werden vom Niederschlag ueberdeckt.
+  map.createPane('peaks'); map.getPane('peaks').style.zIndex=350; map.getPane('peaks').style.pointerEvents='none';
   var ClippedLabels=L.TileLayer.extend({
     createTile:function(coords,done){
       var tile=document.createElement('canvas'), sz=this.getTileSize();
@@ -337,7 +340,7 @@
   function peakMz(f){ return f>=85?8 : f>=70?9 : f>=56?10 : f>=46?11 : 12; }
   var PEAKS=(window.PEAKS&&window.PEAKS.length)?window.PEAKS:[];
   var peakMarkers=PEAKS.map(function(p){
-    var m=L.marker([p[0],p[1]],{interactive:true,keyboard:false,icon:L.divIcon({
+    var m=L.marker([p[0],p[1]],{pane:'peaks',interactive:true,keyboard:false,icon:L.divIcon({
       className:'peak-label',
       html:'<div class="peak-tri"></div><span class="peak-txt">'+p[2]+' <b>'+p[3]+'</b></span>',
       iconSize:[0,0],iconAnchor:[0,0]})});
