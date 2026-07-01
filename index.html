@@ -301,7 +301,7 @@
   var cityMarkers=CITIES.map(function(c){
     var m=L.marker([c[1],c[2]],{interactive:true,keyboard:false,icon:L.divIcon({
       className:'city-label',html:'<div class="city-dot"></div>'+c[0],iconSize:[0,0],iconAnchor:[0,0]})});
-    m.on('click',onLabelTap);
+    m._name=c[0]; m.on('click',onLabelTap);
     return {mz:c[3],m:m};
   });
   function updateCityZoom(){                                  // je nach Zoom Orte ein-/ausblenden
@@ -323,7 +323,7 @@
   var lakeMarkers=LAKES.map(function(l){
     var m=L.marker([l[1],l[2]],{interactive:true,keyboard:false,icon:L.divIcon({
       className:'lake-label',html:l[0],iconSize:[0,0],iconAnchor:[0,0]})});
-    m.on('click',onLabelTap);
+    m._name=l[0]; m.on('click',onLabelTap);
     return {mz:l[3],m:m};
   });
   function updateLakeZoom(){
@@ -352,29 +352,47 @@
   // Bei hohem Zoom zusaetzlich dichte Ortschaften im sichtbaren Ausschnitt einblenden
   var dynMarkers=[], curatedNames={};
   CITIES.forEach(function(c){curatedNames[c[0]]=1;});
+  // Textbreite messen (einmalig gecacht) -> Entzerrung kennt die echte Label-Groesse
+  var _mctx=document.createElement('canvas').getContext('2d');
+  var _FF='-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif';
+  var _fPlace='600 12px '+_FF, _fLake='italic 500 12px '+_FF, _wCache={};
+  function textW(name,font){
+    var k=font+'|'+name; if(_wCache[k]!=null) return _wCache[k];
+    _mctx.font=font; var v=_mctx.measureText(name).width; _wCache[k]=v; return v;
+  }
   function updateDynLabels(){
     dynMarkers.forEach(function(m){map.removeLayer(m);}); dynMarkers=[];
     var touch = (window.matchMedia && window.matchMedia('(pointer:coarse)').matches);
-    if(map.getZoom() < (touch?11:10)) return;                 // auf Touch erst ab Zoom 11 (weniger Gedraenge)
+    if(map.getZoom() < (touch?11:10)) return;                 // auf Touch erst ab Zoom 11
     var b=map.getBounds(),s=b.getSouth(),n=b.getNorth(),w=b.getWest(),e=b.getEast();
-    // Entzerrung per Bildschirm-Raster: pro Zelle nur EIN Label. Auf Touch-Geraeten groessere
-    // Zellen -> weniger, klar getrennte Labels (kein Ueberlappen auf Handy/iPad).
-    var CW=touch?128:84, CH=touch?34:22, occ={};
-    function take(pt){
-      var k=Math.floor(pt.x/CW)+'_'+Math.floor(pt.y/CH);
-      if(occ[k]) return false; occ[k]=1; return true;
+    // Entzerrung anhand des ECHTEN Textkastens (gemessene Breite + Abstand): ein Label wird
+    // nur gesetzt, wenn sein Bereich frei ist. Kein Ueberlappen, und automatisch luftiger.
+    var GRID=10, MX=(touch?14:12), MY=(touch?9:7), LH=15, occ={};
+    function box(x,y,wpx,set){                                // x,y = obere linke Ecke des Textbereichs
+      var x0=Math.floor((x-MX)/GRID), x1=Math.floor((x+wpx+MX)/GRID);
+      var y0=Math.floor((y-MY)/GRID), y1=Math.floor((y+LH+MY)/GRID);
+      for(var cx=x0;cx<=x1;cx++)for(var cy=y0;cy<=y1;cy++){
+        var k=cx+'_'+cy;
+        if(set){ occ[k]=1; } else if(occ[k]){ return false; }
+      }
+      return true;
     }
-    cityMarkers.forEach(function(o){                          // Plaetze sichtbarer Stadt-Labels blockieren
-      if(map.hasLayer(o.m)) take(map.latLngToContainerPoint(o.m.getLatLng()));
+    cityMarkers.forEach(function(o){                          // feste Stadt-Labels (mit Textbreite) blockieren
+      if(map.hasLayer(o.m)){ var pt=map.latLngToContainerPoint(o.m.getLatLng());
+        box(pt.x, pt.y, 12+textW(o.m._name,_fPlace), true); }
     });
-    lakeMarkers.forEach(function(o){                          // ebenso die sichtbaren Seen-Labels
-      if(map.hasLayer(o.m)) take(map.latLngToContainerPoint(o.m.getLatLng()));
+    lakeMarkers.forEach(function(o){                          // Seen-Labels (zentriert) blockieren
+      if(map.hasLayer(o.m)){ var pt=map.latLngToContainerPoint(o.m.getLatLng());
+        var lw=textW(o.m._name,_fLake); box(pt.x-lw/2, pt.y-LH/2, lw, true); }
     });
     var placed=0, MAX=500;                                    // reine Sicherheitsgrenze
     for(var i=0;i<PLACES.length && placed<MAX;i++){var p=PLACES[i];
       if(p[1]<s||p[1]>n||p[2]<w||p[2]>e) continue;            // ausserhalb der Ansicht
       if(curatedNames[p[0]]) continue;                        // schon als festes Label vorhanden
-      if(!take(map.latLngToContainerPoint([p[1],p[2]]))) continue;  // Zelle belegt -> ueberspringen
+      var pt=map.latLngToContainerPoint([p[1],p[2]]);
+      var wpx=12+textW(p[0],_fPlace);                         // Punkt (~12px) + Textbreite
+      if(!box(pt.x, pt.y, wpx, false)) continue;              // Bereich belegt -> ueberspringen
+      box(pt.x, pt.y, wpx, true);                             // Bereich reservieren
       var dm=L.marker([p[1],p[2]],{interactive:true,keyboard:false,icon:L.divIcon({
         className:'city-label',html:'<div class="city-dot"></div>'+p[0],iconSize:[0,0],iconAnchor:[0,0]})}).addTo(map);
       dm.on('click',onLabelTap); dynMarkers.push(dm);
