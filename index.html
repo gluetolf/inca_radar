@@ -309,21 +309,14 @@
     m._name=c[0]; m.on('click',onLabelTap);
     return {mz:c[3],m:m};
   });
-  function updateCityZoom(){                                  // je nach Zoom Orte ein-/ausblenden
-    var z=map.getZoom();
-    cityMarkers.forEach(function(o){
-      var on=map.hasLayer(o.m);
-      if(z>=o.mz && !on) o.m.addTo(map);
-      else if(z<o.mz && on) map.removeLayer(o.m);
-    });
-  }
-  map.on('zoomend',updateCityZoom); updateCityZoom();
+  // nach Wichtigkeit sortiert (kleinere Zoomschwelle = wichtiger); Anzeige/Entzerrung in updateLabels()
+  var citySorted=cityMarkers.slice().sort(function(a,b){return a.mz-b.mz;});
   // ---- Seenamen: eigene Beschriftung (die Hintergrundkarte zeigt in der CH keine Labels) ----
   var LAKES=[
-    ["Genfersee",46.45,6.49,8],["Neuenburgersee",46.91,6.86,8],["Vierwaldstättersee",47.00,8.43,8],["Zürichsee",47.22,8.69,8],["Bodensee",47.61,9.30,8],
-    ["Thunersee",46.68,7.72,9],["Brienzersee",46.72,7.96,9],["Bielersee",47.08,7.17,9],["Zugersee",47.13,8.49,9],["Walensee",47.12,9.19,9],["Lago di Lugano",46.00,8.97,9],["Murtensee",46.93,7.08,9],["Sempachersee",47.14,8.15,9],["Hallwilersee",47.28,8.21,9],["Greifensee",47.35,8.68,9],["Sarnersee",46.87,8.23,9],["Lac de la Gruyère",46.66,7.10,9],
-    ["Ägerisee",47.12,8.63,10],["Sihlsee",47.13,8.78,10],["Pfäffikersee",47.345,8.785,10],["Baldeggersee",47.20,8.26,10],["Lungerersee",46.785,8.16,10],["Klöntalersee",47.025,8.99,10],["Wägitalersee",47.08,8.89,10],["Lac de Joux",46.62,6.27,10],["Silvaplanersee",46.45,9.79,10],["Silsersee",46.42,9.74,10],
-    ["Oeschinensee",46.50,7.73,11]
+    ["Genfersee",46.45,6.49,8],["Bodensee",47.61,9.30,8],["Neuenburgersee",46.91,6.86,8],["Vierwaldstättersee",47.00,8.43,8],["Zürichsee",47.22,8.69,8],
+    ["Lago di Lugano",46.00,8.97,9],["Thunersee",46.68,7.72,9],["Bielersee",47.08,7.17,9],["Zugersee",47.13,8.49,9],["Brienzersee",46.72,7.96,9],["Walensee",47.12,9.19,9],["Murtensee",46.93,7.08,9],
+    ["Sempachersee",47.14,8.15,10],["Hallwilersee",47.28,8.21,10],["Greifensee",47.35,8.68,10],["Sarnersee",46.87,8.23,10],["Lac de la Gruyère",46.66,7.10,10],["Ägerisee",47.12,8.63,10],["Sihlsee",47.13,8.78,10],["Lac de Joux",46.62,6.27,10],["Baldeggersee",47.20,8.26,10],
+    ["Pfäffikersee",47.345,8.785,11],["Silsersee",46.42,9.74,11],["Silvaplanersee",46.45,9.79,11],["Klöntalersee",47.025,8.99,11],["Wägitalersee",47.08,8.89,11],["Lungerersee",46.785,8.16,11],["Oeschinensee",46.50,7.73,11]
   ];
   var lakeMarkers=LAKES.map(function(l){
     var m=L.marker([l[1],l[2]],{interactive:true,keyboard:false,icon:L.divIcon({
@@ -331,6 +324,8 @@
     m._name=l[0]; m.on('click',onLabelTap);
     return {mz:l[3],m:m};
   });
+  // nach Groesse sortiert (kleinere Zoomschwelle = groesserer See) -> grosse Seen zuerst platzieren
+  var lakeSorted=lakeMarkers.slice().sort(function(a,b){return a.mz-b.mz;});
   // (Seen-Labels werden gemeinsam mit den Ortslabels in updateLabels() platziert & entzerrt - siehe unten)
   // Grosser Ortsdatensatz (eingebettet, ~4000 Orte) fuer die genaue Naechster-Ort-Anzeige.
   var PLACES=(window.PLACES&&window.PLACES.length)?window.PLACES:CITIES.map(function(c){return [c[0],c[1],c[2]];});
@@ -361,7 +356,7 @@
     var z=map.getZoom();
     var touch = (window.matchMedia && window.matchMedia('(pointer:coarse)').matches);
     // Entzerrung anhand des ECHTEN Textkastens (gemessene Breite + Abstand): ein Label wird
-    // nur gesetzt, wenn sein Bereich frei ist. Reihenfolge = Prioritaet: Staedte > Seen > Orte.
+    // nur gesetzt, wenn sein Bereich frei ist. Reihenfolge = Prioritaet: Seen > Staedte > Orte.
     var GRID=10, MX=(touch?14:12), MY=(touch?9:7), LH=15, occ={};
     function box(x,y,wpx,set){                                // x,y = obere linke Ecke des Textbereichs
       var x0=Math.floor((x-MX)/GRID), x1=Math.floor((x+wpx+MX)/GRID);
@@ -372,18 +367,23 @@
       }
       return true;
     }
-    // 1) sichtbare feste Stadt-Labels reservieren (hoechste Prioritaet)
-    cityMarkers.forEach(function(o){
-      if(map.hasLayer(o.m)){ var pt=map.latLngToContainerPoint(o.m.getLatLng());
-        box(pt.x, pt.y, 12+textW(o.m._name,_fPlace), true); }
-    });
-    // 2) Seen-Labels: nach Zoomstufe UND nur wenn kollisionsfrei (sonst ausblenden)
-    lakeMarkers.forEach(function(o){
+    // 1) Seen-Labels ZUERST: nach Groesse (kleinere Zoomschwelle = groesserer See). Grosse Seen
+    //    werden zuerst und stabil beschriftet; kleinere weichen groesseren aus.
+    lakeSorted.forEach(function(o){
       var show=false;
       if(z>=o.mz){
         var pt=map.latLngToContainerPoint(o.m.getLatLng()), lw=textW(o.m._name,_fLake);
         if(box(pt.x-lw/2, pt.y-LH/2, lw, false)){ box(pt.x-lw/2, pt.y-LH/2, lw, true); show=true; }
       }
+      var on=map.hasLayer(o.m);
+      if(show && !on) o.m.addTo(map); else if(!show && on) map.removeLayer(o.m);
+    });
+    // 2) feste Stadt-Labels: nach Wichtigkeit platzieren, nur wenn Platz frei -> nahe Labels
+    //    (z.B. Interlaken/Bönigen) ueberlappen nicht mehr; das unwichtigere blendet aus.
+    citySorted.forEach(function(o){
+      var show=false;
+      if(z>=o.mz){ var pt=map.latLngToContainerPoint(o.m.getLatLng()), w=12+textW(o.m._name,_fPlace);
+        if(box(pt.x,pt.y,w,false)){ box(pt.x,pt.y,w,true); show=true; } }
       var on=map.hasLayer(o.m);
       if(show && !on) o.m.addTo(map); else if(!show && on) map.removeLayer(o.m);
     });
