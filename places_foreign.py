@@ -3,8 +3,8 @@
 """
 places_foreign.py  –  EINMALIG lokal ausfuehren (wie peaks_refine.py).
 
-Holt Auslandsorte fuer das Radar-Gebiet automatisch aus GeoNames (cities1000:
-alle Orte weltweit mit >= 1000 Einwohnern) und schreibt fplaces.js
+Holt Auslandsorte fuer das Radar-Gebiet automatisch aus GeoNames (cities500:
+alle Orte weltweit mit >= 500 Einwohnern) und schreibt fplaces.js
 (window.FCITIES). Die Einwohnerzahl bestimmt, ab welcher Zoomstufe ein Ort
 erscheint - Grossstaedte frueh, Kleinstaedte beim Reinzoomen, grenznahe
 Doerfer zuletzt. Schweizer Orte werden uebersprungen (dafuer gibt es PLACES).
@@ -15,7 +15,7 @@ Aufruf:
 
 import io, sys, math, json, zipfile, urllib.request
 
-GEONAMES_URL = "https://download.geonames.org/export/dump/cities1000.zip"
+GEONAMES_URL = "https://download.geonames.org/export/dump/cities500.zip"
 
 # Radar-Bildausschnitt der App (wie DST_W/E/S/N in inca_core.py)
 W, E, S, N = 2.6, 12.5, 43.6, 49.5
@@ -60,10 +60,10 @@ def near_curated(lat, lon):
 
 def main():
     out = sys.argv[1] if len(sys.argv) > 1 else "fplaces.js"
-    print("Lade GeoNames cities1000.zip ...")
+    print("Lade GeoNames cities500.zip ...")
     data = urllib.request.urlopen(GEONAMES_URL, timeout=180).read()
     zf = zipfile.ZipFile(io.BytesIO(data))
-    raw = zf.read("cities1000.txt").decode("utf-8")
+    raw = zf.read("cities500.txt").decode("utf-8")
 
     rows = []; skipped_ch = 0; deduped = 0
     for line in raw.splitlines():
@@ -79,11 +79,15 @@ def main():
         if f[6] != "P" or not f[7].startswith("PPL"): continue      # nur bewohnte Orte
         if f[7] in ("PPLX","PPLW","PPLQ","PPLH"): continue          # keine Ortsteile/Wuestungen
         grenznah = (NW <= lon <= NE and NS <= lat <= NN)
-        if pop < 4000 and not grenznah: continue                    # kleine Orte nur grenznah
+        if pop < 2000 and not grenznah: continue                    # kleine Orte nur grenznah
         if near_curated(lat, lon): deduped += 1; continue           # kuratierte Exonyme behalten Vorrang
         rows.append((round(lat,4), round(lon,4), f[1], mz_for(pop), pop))
 
     rows.sort(key=lambda r: (r[3], -r[4]))                          # wichtigste zuerst
+    CAP = 9000
+    if len(rows) > CAP:
+        print(f"  Hinweis: {len(rows)} Orte gefunden -> auf {CAP} gekappt (kleinste zuletzt eingestufte entfallen)")
+        rows = rows[:CAP]
     lines = ["// Auslandsorte aus GeoNames (cities1000), automatisch erzeugt von places_foreign.py",
              "// [ Name, lat, lon, abZoom ]  - Einblendstufe nach Einwohnerzahl",
              "window.FCITIES=["]
