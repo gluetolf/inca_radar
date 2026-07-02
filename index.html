@@ -330,7 +330,7 @@
     var m=L.marker([l[1],l[2]],{pane:'bglbl',interactive:true,keyboard:false,icon:L.divIcon({
       className:'lake-label',html:l[0],iconSize:[0,0],iconAnchor:[0,0]})});
     m._name=l[0]; m.on('click',onLabelTap);
-    return {mz:l[3],m:m};
+    return {mz:l[3],m:m,base:m.getLatLng()};
   });
   // nach Groesse sortiert (kleinere Zoomschwelle = groesserer See) -> grosse Seen zuerst platzieren
   var lakeSorted=lakeMarkers.slice().sort(function(a,b){return a.mz-b.mz;});
@@ -414,12 +414,22 @@
         placed++;
       }
     }
-    // 3) Seen-Labels NACH den Orten (weichen Ortslabels aus): nach Groesse, grosse zuerst.
+    // 3) Seen-Labels NACH den Orten: flaechengebunden -> bei Konflikt AUSWEICHEN statt ausblenden.
+    //    Kandidaten: Mitte, dann seitlich/vertikal versetzt (bleibt bei grossen Seen auf dem Wasser).
     lakeSorted.forEach(function(o){
       var show=false;
       if(z>=o.mz){
-        var pt=map.project(o.m.getLatLng()), lw=textW(o.m._name,_fLake);
-        if(box(pt.x-lw/2, pt.y-LH/2, lw, false)){ box(pt.x-lw/2, pt.y-LH/2, lw, true); show=true; }
+        var base=map.project(o.base), lw=textW(o.m._name,_fLake);
+        var dx=Math.round(lw*0.55)+10, dy=LH+2;
+        var C=[[0,0],[dx,0],[-dx,0],[0,dy],[0,-dy],[dx,dy],[-dx,dy],[dx,-dy],[-dx,-dy]];
+        for(var k=0;k<C.length;k++){
+          var x=base.x+C[k][0], y=base.y+C[k][1];
+          if(box(x-lw/2, y-LH/2, lw, false)){
+            box(x-lw/2, y-LH/2, lw, true);
+            o.m.setLatLng(map.unproject(L.point(x,y)));
+            show=true; break;
+          }
+        }
       }
       var on=map.hasLayer(o.m);
       if(show && !on) o.m.addTo(map); else if(!show && on) map.removeLayer(o.m);
