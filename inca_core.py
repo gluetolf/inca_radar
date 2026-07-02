@@ -1027,7 +1027,7 @@ def _probe_cpc(tmp, base):
     Liegt als ODIM-HDF5 in der Radar-Collection -> vorhandener radar_grid()-Leser passt."""
     import re
     print("CPC-PROBE (CombiPrecip): starte")
-    feats = _post_json(f"{STAC}/search", {"collections": [RADAR_COLLECTION], "limit": 5}).get("features", [])
+    feats = _post_json(f"{STAC}/search", {"collections": [RADAR_COLLECTION], "limit": 100}).get("features", [])
     rx = re.compile(r"CPC(\d{2})(\d{3})(\d{4})")
     cands = []
     for ft in feats:
@@ -1044,6 +1044,9 @@ def _probe_cpc(tmp, base):
         print("  Keine CPC-Assets gefunden. Vorhandene Produkt-Prefixe:", allnames)
         return
     cands.sort(reverse=True)
+    print(f"  CPC-Assets gefunden: {len(cands)}; die neuesten:")
+    for c_ in cands[:3]:
+        print(f"    {c_[0]:%Y-%m-%d %H:%M}Z  {c_[1]}")
     when, name, href, created = cands[0]
     age = (base - when).total_seconds() / 60.0
     print(f"  Neuestes CPC: {name}")
