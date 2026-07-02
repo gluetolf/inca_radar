@@ -170,7 +170,7 @@
 <div class="loading" id="loading"><div class="errbox" id="loadtext"><div class="spinner"></div>Daten werden geladen…</div></div>
 
 <script src="places.js?v=2"></script>
-<script src="fplaces.js?v=2"></script>
+<script src="fplaces.js?v=3"></script>
 <script src="peaks.js?v=2"></script>
 
 <script>
@@ -239,9 +239,18 @@
   // (Basiskarten-Labelschichten sind bewusst komplett abgeschaltet: jede Ausstanzung erzeugte
   //  unschoene Kanten. Ausserhalb des Radar-Gebiets stehen die europaeischen Hauptstaedte aus fplaces.js.)
   map.createPane('bglbl'); map.getPane('bglbl').style.zIndex=350; map.getPane('bglbl').style.pointerEvents='none';
+  // Datenperimeter sichtbar machen: ausserhalb des Radar-/Prognose-Rechtecks gibt es KEINE
+  // Daten -> Umgebung dezent abdunkeln + feine gestrichelte Rahmenlinie (Stil wie MeteoSchweiz-App).
+  map.createPane('veil'); map.getPane('veil').style.zIndex=330; map.getPane('veil').style.pointerEvents='none';
+  var _world=[[-85,-180],[-85,180],[85,180],[85,-180]];
+  var _rect=[[43.6,2.6],[43.6,12.5],[49.5,12.5],[49.5,2.6]];
+  var veil=L.polygon([_world,_rect],{pane:'veil',stroke:false,fillColor:'#252e38',fillOpacity:0.16,interactive:false}).addTo(map);
+  var veilEdge=L.polygon(_rect,{pane:'veil',fill:false,color:'#7d8892',weight:1,dashArray:'5 5',opacity:0.55,interactive:false}).addTo(map);
   var dark=false;
   document.getElementById('darkBtn').onclick=function(){dark=!dark;
     base.setUrl(dark?DARK:LIGHT); this.classList.toggle('on',dark);
+    veil.setStyle({fillColor:dark?'#000000':'#252e38',fillOpacity:dark?0.42:0.16});
+    veilEdge.setStyle({color:dark?'#5a646e':'#7d8892'});
     document.body.style.background=dark?'#10140c':'#dfe5d8';document.getElementById('map').style.background=dark?'#10140c':'#dfe5d8';};
   // ---- Hinweis-Balken (Toast) ----
   function toast(html, ms){

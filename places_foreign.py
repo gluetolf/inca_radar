@@ -67,6 +67,11 @@ CAPITALS = [
  ("Moskau",55.7558,37.6173),("Riga",56.9496,24.1052),("Vilnius",54.6872,25.2797),("Tallinn",59.4370,24.7536),
  ("Reykjavik",64.1466,-21.9426),("Monaco",43.7384,7.4246),("San Marino",43.9424,12.4578),
  ("Andorra la Vella",42.5063,1.5218),("Valletta",35.8989,14.5146),("Nikosia",35.1856,33.3823),
+ ("Pristina",42.6629,21.1655),("Vatikanstadt",41.9029,12.4534),
+ # transkontinentale Europarats-Staaten
+ ("Ankara",39.9334,32.8597),("Tiflis",41.7151,44.8271),("Eriwan",40.1792,44.4991),("Baku",40.4093,49.8671),
+ # Landeshauptstaedte im Vereinigten Koenigreich
+ ("Edinburgh",55.9533,-3.1883),("Cardiff",51.4816,-3.1791),("Belfast",54.5973,-5.9301),
 ]
 
 def near_curated(lat, lon):
