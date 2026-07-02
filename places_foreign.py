@@ -52,6 +52,23 @@ CURATED = [
  ("Verbania",45.936,8.554),("Luino",46.002,8.742),("Chiavenna",46.320,9.397),("Tirano",46.216,10.169),
 ]
 
+
+# Europaeische Hauptstaedte [Name, lat, lon] - fix ab Zoom 6, unabhaengig vom Radar-Gebiet.
+# (Bern/Vaduz fehlen bewusst: stehen bereits in CITIES.)
+CAPITALS = [
+ ("Paris",48.8566,2.3522),("London",51.5074,-0.1278),("Madrid",40.4168,-3.7038),("Rom",41.9028,12.4964),
+ ("Berlin",52.5200,13.4050),("Wien",48.2082,16.3738),("Prag",50.0755,14.4378),("Brüssel",50.8503,4.3517),
+ ("Amsterdam",52.3676,4.9041),("Luxemburg",49.6116,6.1319),("Lissabon",38.7223,-9.1393),("Dublin",53.3498,-6.2603),
+ ("Kopenhagen",55.6761,12.5683),("Oslo",59.9139,10.7522),("Stockholm",59.3293,18.0686),("Helsinki",60.1699,24.9384),
+ ("Warschau",52.2297,21.0122),("Budapest",47.4979,19.0402),("Bratislava",48.1486,17.1077),("Ljubljana",46.0569,14.5058),
+ ("Zagreb",45.8150,15.9819),("Belgrad",44.7866,20.4489),("Sarajevo",43.8563,18.4131),("Podgorica",42.4304,19.2594),
+ ("Tirana",41.3275,19.8187),("Skopje",41.9973,21.4280),("Sofia",42.6977,23.3219),("Bukarest",44.4268,26.1025),
+ ("Athen",37.9838,23.7275),("Chișinău",47.0105,28.8638),("Kiew",50.4501,30.5234),("Minsk",53.9006,27.5590),
+ ("Moskau",55.7558,37.6173),("Riga",56.9496,24.1052),("Vilnius",54.6872,25.2797),("Tallinn",59.4370,24.7536),
+ ("Reykjavik",64.1466,-21.9426),("Monaco",43.7384,7.4246),("San Marino",43.9424,12.4578),
+ ("Andorra la Vella",42.5063,1.5218),("Valletta",35.8989,14.5146),("Nikosia",35.1856,33.3823),
+]
+
 def near_curated(lat, lon):
     for _, cla, clo in CURATED:
         if abs(lat-cla) < 0.035 and abs((lon-clo)*math.cos(math.radians(lat))) < 0.035:
@@ -81,8 +98,18 @@ def main():
         grenznah = (NW <= lon <= NE and NS <= lat <= NN)
         if pop < 2000 and not grenznah: continue                    # kleine Orte nur grenznah
         if near_curated(lat, lon): deduped += 1; continue           # kuratierte Exonyme behalten Vorrang
-        rows.append((round(lat,4), round(lon,4), f[1], mz_for(pop), pop))
+        mz = mz_for(pop)
+        if not grenznah: mz = max(mz, 9)                             # Fernfeld: fruehestens ab Zoom 9
+        rows.append((round(lat,4), round(lon,4), f[1], mz, pop))
 
+    # cities500-Eintraege, die praktisch AUF einer Hauptstadt liegen (Monaco, San Marino), entfernen
+    def near_cap(lat, lon):
+        for _, cla, clo in CAPITALS:
+            if abs(lat-cla) < 0.03 and abs((lon-clo)*math.cos(math.radians(lat))) < 0.03:
+                return True
+        return False
+    rows = [r for r in rows if not near_cap(r[0], r[1])]
+    rows += [(round(cla,4), round(clo,4), name, 6, 10**9) for name, cla, clo in CAPITALS]
     rows.sort(key=lambda r: (r[3], -r[4]))                          # wichtigste zuerst
     CAP = 9000
     if len(rows) > CAP:

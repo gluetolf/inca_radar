@@ -170,7 +170,7 @@
 <div class="loading" id="loading"><div class="errbox" id="loadtext"><div class="spinner"></div>Daten werden geladen…</div></div>
 
 <script src="places.js?v=2"></script>
-<script src="fplaces.js?v=1"></script>
+<script src="fplaces.js?v=2"></script>
 <script src="peaks.js?v=2"></script>
 
 <script>
@@ -236,44 +236,12 @@
   var base=L.tileLayer(LIGHT,{attribution:'© OpenStreetMap, © CARTO · Daten: MeteoSchweiz, DWD, Météo-France',maxZoom:19}).addTo(map);
   // Hintergrund-Label-Ebene: zwischen Basiskarte (tilePane 200) und Niederschlag (overlayPane 400).
   // Enthaelt Seen- UND Gipfel-Labels -> beide wirken wie Teil der Karte, der Niederschlag liegt darueber.
+  // (Basiskarten-Labelschichten sind bewusst komplett abgeschaltet: jede Ausstanzung erzeugte
+  //  unschoene Kanten. Ausserhalb des Radar-Gebiets stehen die europaeischen Hauptstaedte aus fplaces.js.)
   map.createPane('bglbl'); map.getPane('bglbl').style.zIndex=350; map.getPane('bglbl').style.pointerEvents='none';
-  // Basiskarten-Labels NUR ausserhalb des Radar-Perimeters: innerhalb beschriften wir selbst
-  // (PLACES/CITIES/FCITIES), ausserhalb wuerden sonst saemtliche Orte fehlen. Der Schnitt liegt
-  // an der Radar-Kante (weit weg vom Fokus), nicht mehr an der Schweizer Grenze.
-  var RADAR_RECT={w:2.6,e:12.5,s:43.6,n:49.5};
-  map.createPane('extlbl'); map.getPane('extlbl').style.zIndex=340; map.getPane('extlbl').style.pointerEvents='none';
-  var LBL_L="https://{s}.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}{r}.png";
-  var LBL_D="https://{s}.basemaps.cartocdn.com/dark_only_labels/{z}/{x}/{y}{r}.png";
-  var ExtLabels=L.TileLayer.extend({
-    createTile:function(coords,done){
-      var tile=document.createElement('canvas'), sz=this.getTileSize();
-      tile.width=sz.x; tile.height=sz.y;
-      var ctx=tile.getContext('2d'), mp=this._map, img=new Image();
-      img.crossOrigin='anonymous';
-      img.onload=function(){
-        try{
-          ctx.drawImage(img,0,0,sz.x,sz.y);
-          var ox=coords.x*sz.x, oy=coords.y*sz.y;
-          var p1=mp.project([RADAR_RECT.n,RADAR_RECT.w],coords.z), p2=mp.project([RADAR_RECT.s,RADAR_RECT.e],coords.z);
-          var x=p1.x-ox, y=p1.y-oy, w=p2.x-p1.x, h=p2.y-p1.y;
-          ctx.globalCompositeOperation='destination-out';
-          ctx.fillRect(x,y,w,h);                       // Radar-Gebiet ausstanzen (dort: eigene Labels)
-          for(var lw=3; lw<=12; lw+=3){                // weiche Kante am Perimeter
-            ctx.globalAlpha=0.35; ctx.lineWidth=lw; ctx.strokeRect(x,y,w,h);
-          }
-          ctx.globalAlpha=1; ctx.globalCompositeOperation='source-over';
-        }catch(e){}
-        done(null,tile);
-      };
-      img.onerror=function(e){done(e,tile);};
-      img.src=this.getTileUrl(coords);
-      return tile;
-    }
-  });
-  var extLabels=new ExtLabels(LBL_L,{maxZoom:19,pane:'extlbl',detectRetina:false}).addTo(map);
   var dark=false;
   document.getElementById('darkBtn').onclick=function(){dark=!dark;
-    base.setUrl(dark?DARK:LIGHT); extLabels.setUrl(dark?LBL_D:LBL_L); this.classList.toggle('on',dark);
+    base.setUrl(dark?DARK:LIGHT); this.classList.toggle('on',dark);
     document.body.style.background=dark?'#10140c':'#dfe5d8';document.getElementById('map').style.background=dark?'#10140c':'#dfe5d8';};
   // ---- Hinweis-Balken (Toast) ----
   function toast(html, ms){
