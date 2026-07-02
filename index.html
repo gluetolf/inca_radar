@@ -6,6 +6,9 @@
 <title>Niederschlagsradar Schweiz</title>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:ital,wght@0,400;0,500;0,600;1,400;1,500&display=swap" rel="stylesheet">
 <style>
   :root{--green:#76b82a;--green-dark:#5e9521;--ink:#1d2417;--panel:rgba(255,255,255,.92);
     --panel-line:rgba(0,0,0,.08);--muted:#6b7464;--shadow:0 2px 14px rgba(0,0,0,.14);--radius:14px;
@@ -14,9 +17,9 @@
   html,body{height:100%;margin:0}
   body{overflow:hidden;background:#dfe5d8;color:var(--ink)}
   #map{position:absolute;inset:0;background:#dfe5d8;z-index:0}
-  .city-label{background:none;border:none;box-shadow:none;font-weight:600;font-size:12px;color:#2c3422;
+  .city-label{background:none;border:none;box-shadow:none;font-family:'Montserrat',-apple-system,"Segoe UI",Roboto,sans-serif;font-weight:600;font-size:12px;color:#2c3422;
     text-shadow:0 0 3px #fff,0 0 3px #fff,0 0 6px #fff;white-space:nowrap;pointer-events:auto;cursor:pointer}
-  .lake-label{background:none;border:none;box-shadow:none;font-style:italic;font-weight:500;font-size:11px;
+  .lake-label{background:none;border:none;box-shadow:none;font-family:'Montserrat',-apple-system,"Segoe UI",Roboto,sans-serif;font-style:italic;font-weight:500;font-size:11px;
     color:#1b5a8c;letter-spacing:.5px;transform:translate(-50%,-50%);
     text-shadow:0 0 3px #fff,0 0 3px #fff,0 0 6px #fff;white-space:nowrap;pointer-events:auto;cursor:pointer}
   .city-dot{width:5px;height:5px;border-radius:50%;background:#2c3422;box-shadow:0 0 0 2px #fff;margin:0 auto 2px}
@@ -24,7 +27,8 @@
   .city-home{color:var(--green-dark)}
   .peak-label{background:none;border:none;box-shadow:none;white-space:nowrap;pointer-events:auto;cursor:pointer}
   .peak-tri{position:absolute;left:-5px;top:-4px;width:0;height:0;border-left:5px solid transparent;border-right:5px solid transparent;border-bottom:9px solid #b0b5bd;filter:drop-shadow(0 0 1px #fff)}
-  .peak-txt{position:absolute;left:7px;top:-12px;font-weight:500;font-size:11px;color:#adb2ba;text-shadow:0 0 2px #fff,0 0 2px #fff,0 0 3px #fff;transform:rotate(-18deg);transform-origin:left bottom}
+  .peak-txt{position:absolute;left:7px;top:-12px;font-family:'Montserrat',-apple-system,"Segoe UI",Roboto,sans-serif;font-weight:500;font-size:11px;color:#adb2ba;text-shadow:0 0 2px #fff,0 0 2px #fff,0 0 3px #fff;transform:rotate(-18deg);transform-origin:left bottom}
+  .peak-flip .peak-txt{left:auto;right:7px;transform:rotate(-18deg);transform-origin:right bottom;text-align:right}
   .peak-txt b{font-weight:400;color:#bdc1c8}
   .topbar{position:absolute;top:0;left:0;right:0;z-index:500;display:flex;align-items:center;gap:12px;padding:12px 16px;pointer-events:none}
   .brand{pointer-events:auto;background:var(--panel);backdrop-filter:blur(8px);border:1px solid var(--panel-line);
@@ -249,6 +253,13 @@
             for(var k=0;k<B.length;k++){var p=mp.project([B[k][0],B[k][1]],coords.z);
               k?ctx.lineTo(p.x-ox,p.y-oy):ctx.moveTo(p.x-ox,p.y-oy);}
             ctx.closePath(); ctx.fill();
+            // weiche Kante: Grenze mehrfach halbtransparent nachziehen -> angeschnittene
+            // Namen blenden sanft aus statt hart abgeschnitten zu werden
+            ctx.lineJoin='round'; ctx.lineCap='round';
+            for(var lw=2; lw<=14; lw+=4){
+              ctx.globalAlpha=0.35; ctx.lineWidth=lw; ctx.stroke();
+            }
+            ctx.globalAlpha=1;
             ctx.globalCompositeOperation='source-over';
           }
         }catch(e){}
@@ -321,7 +332,7 @@
   var citySorted=cityMarkers.slice().sort(function(a,b){return a.mz-b.mz;});
   // ---- Seenamen: eigene Beschriftung (die Hintergrundkarte zeigt in der CH keine Labels) ----
   var LAKES=[
-    ["Genfersee",46.45,6.49,8],["Bodensee",47.61,9.30,8],["Neuenburgersee",46.91,6.86,8],["Vierwaldstättersee",47.00,8.43,8],["Zürichsee",47.22,8.69,8],["Lago Maggiore",46.12,8.79,8],
+    ["Genfersee",46.45,6.49,9],["Bodensee",47.61,9.30,9],["Neuenburgersee",46.91,6.86,9],["Vierwaldstättersee",47.00,8.43,9],["Zürichsee",47.22,8.69,9],["Lago Maggiore",46.12,8.79,9],
     ["Lago di Lugano",46.00,8.97,9],["Thunersee",46.68,7.72,9],["Bielersee",47.08,7.17,9],["Zugersee",47.13,8.49,9],["Brienzersee",46.72,7.96,9],["Walensee",47.12,9.19,9],["Murtensee",46.93,7.08,9],
     ["Sempachersee",47.14,8.15,10],["Hallwilersee",47.28,8.21,10],["Greifensee",47.35,8.68,10],["Sarnersee",46.87,8.23,10],["Lac de la Gruyère",46.66,7.10,10],["Ägerisee",47.12,8.63,10],["Sihlsee",47.13,8.78,10],["Lac de Joux",46.62,6.27,10],["Baldeggersee",47.20,8.26,10],
     ["Pfäffikersee",47.345,8.785,11],["Silsersee",46.42,9.74,11],["Silvaplanersee",46.45,9.79,11],["Klöntalersee",47.025,8.99,11],["Wägitalersee",47.08,8.89,11],["Lungerersee",46.785,8.16,11],["Oeschinensee",46.50,7.73,11]
@@ -367,8 +378,9 @@
   CITIES.forEach(function(c){curatedNames[c[0]]=1;});
   // Textbreite messen (einmalig gecacht) -> Entzerrung kennt die echte Label-Groesse
   var _mctx=document.createElement('canvas').getContext('2d');
-  var _FF='-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif';
+  var _FF="'Montserrat',-apple-system,\"Segoe UI\",Roboto,Helvetica,Arial,sans-serif";
   var _fPlace='600 12px '+_FF, _fLake='italic 500 11px '+_FF, _fPeak='500 11px '+_FF, _wCache={};
+  if(document.fonts&&document.fonts.ready)document.fonts.ready.then(function(){_wCache={};updateLabels();});
   function textW(name,font){
     var k=font+'|'+name; if(_wCache[k]!=null) return _wCache[k];
     _mctx.font=font; var v=_mctx.measureText(name).width; _wCache[k]=v; return v;
@@ -415,13 +427,19 @@
       }
     }
     // 3) Seen-Labels NACH den Orten: flaechengebunden -> bei Konflikt AUSWEICHEN statt ausblenden.
-    //    Kandidaten: Mitte, dann seitlich/vertikal versetzt (bleibt bei grossen Seen auf dem Wasser).
+    //    Viele Kandidaten (auch weiter entlang der Laengsachse/diagonal) - wichtig fuer lange,
+    //    dicht beschriftete Seen wie den Zuerichsee.
     lakeSorted.forEach(function(o){
       var show=false;
       if(z>=o.mz){
         var base=map.project(o.base), lw=textW(o.m._name,_fLake);
-        var dx=Math.round(lw*0.55)+10, dy=LH+2;
-        var C=[[0,0],[dx,0],[-dx,0],[0,dy],[0,-dy],[dx,dy],[-dx,dy],[dx,-dy],[-dx,-dy]];
+        var dx=Math.round(lw*0.55)+10, dx2=dx*2, dy=LH+2, dy2=dy*2;
+        var C=[[0,0],
+               [dx,0],[-dx,0],[0,dy],[0,-dy],
+               [dx,dy],[-dx,dy],[dx,-dy],[-dx,-dy],
+               [dx2,0],[-dx2,0],[0,dy2],[0,-dy2],
+               [dx2,dy],[-dx2,dy],[dx2,-dy],[-dx2,-dy],
+               [dx,dy2],[-dx,dy2],[dx,-dy2],[-dx,-dy2]];
         for(var k=0;k<C.length;k++){
           var x=base.x+C[k][0], y=base.y+C[k][1];
           if(box(x-lw/2, y-LH/2, lw, false)){
@@ -434,16 +452,18 @@
       var on=map.hasLayer(o.m);
       if(show && !on) o.m.addTo(map); else if(!show && on) map.removeLayer(o.m);
     });
-    // 4) Gipfel ZULETZT (niedrigste Prioritaet -> treten hinter Seen/Orte zurueck; dezent, hellgrau).
-    //    Label sitzt schraeg rechts oberhalb des Dreiecks; Bereich entsprechend reservieren.
+    // 4) Gipfel ZULETZT (niedrigste Prioritaet). Label normal rechts vom Dreieck; ist dort
+    //    belegt, klappt es auf die LINKE Seite um; erst wenn beides belegt ist, blendet es aus.
     peakSorted.forEach(function(o){
-      var show=false;
+      var show=false, flip=false;
       if(z>=o.mz){
         var pt=map.project(o.m.getLatLng()), w=12+textW(o.label,_fPeak);
         if(box(pt.x-4, pt.y-12, w, false)){ box(pt.x-4, pt.y-12, w, true); show=true; }
+        else if(box(pt.x-w+8, pt.y-12, w, false)){ box(pt.x-w+8, pt.y-12, w, true); show=true; flip=true; }
       }
       var on=map.hasLayer(o.m);
       if(show && !on) o.m.addTo(map); else if(!show && on) map.removeLayer(o.m);
+      if(show){ var el=o.m.getElement(); if(el) el.classList.toggle('peak-flip', flip); }
     });
   }
   map.on('moveend',updateLabels); updateLabels();
