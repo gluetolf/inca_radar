@@ -632,10 +632,9 @@
     return (''+lo).replace('.',',')+'–'+(''+hi).replace('.',',')+' mm/h';}
   var _cv=document.createElement('canvas'),_ctx=_cv.getContext('2d',{willReadFrequently:true}),_imgs={};
   function imgFor(url){if(_imgs[url])return _imgs[url];var im=new Image();im.onload=function(){updateReadout();};im.src=url;_imgs[url]=im;return im;}
-  function sampleAt(i,ll){
-    if(!frames[i])return undefined;
+  function samplePix(im,ll){                                     // Farbklasse eines Datenbilds am Punkt
     if(ll.lng<bW||ll.lng>bE||ll.lat<bS||ll.lat>bN)return undefined; // ausserhalb der Karte
-    var im=imgFor(frames[i]._url);if(!im.complete||!im.naturalWidth)return undefined;
+    if(!im.complete||!im.naturalWidth)return undefined;
     var w=im.naturalWidth,h=im.naturalHeight;
     if(_cv.width!==w){_cv.width=w;_cv.height=h;}
     try{_ctx.clearRect(0,0,w,h);_ctx.drawImage(im,0,0);
@@ -647,6 +646,10 @@
         e=(c[1][0]-d[0])*(c[1][0]-d[0])+(c[1][1]-d[1])*(c[1][1]-d[1])+(c[1][2]-d[2])*(c[1][2]-d[2]);
         if(e<bd){bd=e;best=k;}}return best;
     }catch(err){return -1;} // Pixel nicht lesbar
+  }
+  function sampleAt(i,ll){
+    if(!frames[i])return undefined;
+    return samplePix(imgFor(frames[i]._url),ll);
   }
   // ---- Koordinaten: in/nahe der Schweiz LV95 (CH95), sonst WGS84 ----
   function toLV95(lat,lng){
