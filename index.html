@@ -36,6 +36,13 @@
   .brand .mark{width:10px;height:26px;border-radius:3px;background:var(--green);flex:none}
   .brand h1{font-size:15px;margin:0;line-height:1.15;font-weight:700;letter-spacing:.2px}
   .brand .sub{font-size:11px;color:var(--muted);margin-top:1px}
+  .brand .sub-m{display:none}
+  /* Handy (nicht iPad): Titelbox kompakt, unten im Dock direkt ueber der Zeitleiste */
+  body.phone .brand h1,body.phone .brand .sub{display:none}
+  body.phone .brand .sub-m{display:block;font-size:12px;font-weight:600;letter-spacing:.2px}
+  body.phone .brand{padding:6px 12px;gap:8px}
+  body.phone .brand .mark{height:15px;width:8px}
+  body.phone .dock{flex-direction:column;align-items:center;gap:8px}
   .status{pointer-events:auto;margin-left:auto;background:var(--panel);backdrop-filter:blur(8px);border:1px solid var(--panel-line);
     border-radius:999px;box-shadow:var(--shadow);padding:7px 13px;font-size:12px;color:var(--muted);display:flex;align-items:center;gap:7px}
   .status .live{width:8px;height:8px;border-radius:50%;background:var(--green)}
@@ -94,9 +101,6 @@
   .sr-gem{color:var(--muted);font-size:12px;margin-left:auto}
   .sr-world{color:var(--muted);font-size:13px}
   .sr-info{padding:9px 14px;color:var(--muted);font-size:13px}
-  .drybadge{position:absolute;top:54%;left:50%;transform:translate(-50%,-50%);z-index:450;display:none;pointer-events:none;
-    background:rgba(255,255,255,.82);backdrop-filter:blur(6px);border:1px solid var(--panel-line);border-radius:12px;
-    box-shadow:var(--shadow);padding:7px 15px;font-size:13px;font-weight:600;color:var(--muted)}
   .sel-marker div{width:14px;height:14px;border-radius:50%;background:#fff;border:3px solid var(--green-dark);box-shadow:0 0 0 2px #fff,0 2px 6px rgba(0,0,0,.3)}
   .loc-marker div{width:16px;height:16px;border-radius:50%;background:#1a73e8;border:3px solid #fff;box-shadow:0 0 0 2px rgba(26,115,232,.45),0 2px 6px rgba(0,0,0,.35)}
   .crosshair{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);z-index:450;pointer-events:none;
@@ -126,7 +130,8 @@
 <div class="crosshair" id="crosshair"></div>
 <div class="topbar">
   <div class="brand"><span class="mark"></span>
-    <div><h1>Niederschlagsradar</h1><div class="sub">Radar &amp; Prognose · MeteoSchweiz, DWD, Météo-France</div></div>
+    <div><h1>Niederschlagsradar</h1><div class="sub">Radar &amp; Prognose · MeteoSchweiz, DWD, Météo-France</div>
+    <div class="sub-m">Niederschlag Radar &amp; Prognose</div></div>
   </div>
   <div class="status"><span class="live"></span><span id="updated">lädt…</span></div>
 </div>
@@ -144,7 +149,6 @@
   <div class="pc-top"><span class="pc-sw" id="pcsw"></span><span class="pc-loc" id="pcloc"></span><span class="pc-val" id="pcval"></span></div>
   <div class="pc-coord" id="pccoord"></div>
 </div>
-<div class="drybadge" id="drybadge">kein Niederschlag erwartet</div>
 <div class="toast" id="toast"></div>
 <div class="dock"><div class="panel">
   <div class="row">
@@ -707,12 +711,7 @@
     return ll.lat.toFixed(4)+'°, '+ll.lng.toFixed(4)+'°';            // ausserhalb -> WGS84
   }
   function updateReadout(){
-    var dry=document.getElementById('drybadge'),chip=document.getElementById('pointchip');
-    // Trocken-Hinweis: aktuelles Bild ohne Niederschlag
-    var fr=frames[idx];
-    if(fr&&(+fr.max_mmh)===0){dry.style.display='block';
-      dry.textContent=fr.kind==='forecast'?'kein Niederschlag erwartet':'kein Niederschlag';}
-    else dry.style.display='none';
+    var chip=document.getElementById('pointchip');
     // Punkt-Anzeige
     if(!selLatLng){chip.style.display='none';return;}
     chip.style.display='flex';
@@ -727,6 +726,14 @@
     else{var c=SCALE_JS[k][1];sw.style.background='rgb('+c[0]+','+c[1]+','+c[2]+')';sw.style.borderColor='rgba(0,0,0,.15)';val.textContent=rangeText(k);}
   }
   map.on('click',function(e){ map.panTo(e.latlng); });          // auf den getippten Punkt zentrieren; Mitte = Fadenkreuz
+
+  // Handy (schmaler Bildschirm, nicht iPad): Titelbox unten ins Dock verschieben,
+  // direkt oberhalb der Zeitleiste. Credits stehen bereits in der Fusszeile.
+  if(window.matchMedia && window.matchMedia('(max-width:520px)').matches){
+    document.body.classList.add('phone');
+    var _dk=document.querySelector('.dock'), _br=document.querySelector('.brand');
+    if(_dk && _br) _dk.insertBefore(_br, _dk.firstChild);
+  }
 
 })();
 </script>
