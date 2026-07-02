@@ -884,31 +884,50 @@ NOWCAST_COLLECTION = os.environ.get("NOWCAST_COLLECTION", "")   # leer -> automa
 
 
 def _nowcast_find_collection():
-    """Nowcast-Collection in der STAC-Liste finden (folgt Paginierung)."""
+    """Alle ch.meteoschweiz.*-Collections auflisten (volle Paginierung) und
+    Nowcast-/INCA-Kandidaten zurueckgeben. Einmalige Diagnose - Liste wird gedruckt."""
     url = f"{STAC}/collections?limit=100"
-    for _ in range(8):                                      # max 8 Seiten
+    msw = []
+    for _ in range(60):                                     # bis zu 6000 Collections
         data = _get_json(url, no_cache=True)
-        ids = [c.get("id", "") for c in data.get("collections", [])]
-        hit = [i for i in ids if "nowcast" in i.lower()]
-        if hit:
-            return hit
+        for col in data.get("collections", []):
+            i = col.get("id", "")
+            if i.startswith("ch.meteoschweiz"):
+                msw.append(i)
         nxt = [l.get("href") for l in data.get("links", []) if l.get("rel") == "next"]
         if not nxt:
-            return []
+            break
         url = nxt[0]
-    return []
+    print(f"  MeteoSchweiz-Collections gesamt: {len(msw)}")
+    for i in sorted(msw):
+        print("   -", i)
+    return [i for i in msw if ("nowcast" in i.lower() or "inca" in i.lower())]
 
 
 def nowcast_probe(tmp, now=None):
     base = now or dt.datetime.now(dt.timezone.utc)
     print("NOWCAST-PROBE: starte")
+    try:
+        _probe_inca(tmp, base)
+    except Exception as e:
+        print("  INCA-Zweig fehlgeschlagen:", e)
+    try:
+        _probe_cpc(tmp, base)
+    except Exception as e:
+        print("  CombiPrecip-Zweig fehlgeschlagen:", e)
+
+
+def _probe_inca(tmp, base):
     # -- 1) Collection bestimmen ------------------------------------------------
     cid = NOWCAST_COLLECTION
     if not cid:
         try:
             cand = _nowcast_find_collection()
             print(f"  Nowcast-Collections gefunden: {cand if cand else 'KEINE'}")
-            cid = cand[0] if cand else "ch.meteoschweiz.ogd-nowcasting"
+            if not cand:
+                print("  -> Schlussfolgerung: INCA-Nowcast ist (noch) nicht als OGD publiziert.")
+                return
+            cid = cand[0]
         except Exception as e:
             print("  Collection-Suche fehlgeschlagen:", e)
             cid = "ch.meteoschweiz.ogd-nowcasting"
@@ -1001,3 +1020,44 @@ def nowcast_probe(tmp, now=None):
     else:
         print("  Keine x/y-Gittervariablen erkannt - Variablenliste oben pruefen.")
     ds.close()
+
+
+def _probe_cpc(tmp, base):
+    """CombiPrecip (CPC): bodenkorrigierte Stundensumme (Radar + Regenmesser), 5-min-Updates.
+    Liegt als ODIM-HDF5 in der Radar-Collection -> vorhandener radar_grid()-Leser passt."""
+    import re
+    print("CPC-PROBE (CombiPrecip): starte")
+    feats = _post_json(f"{STAC}/search", {"collections": [RADAR_COLLECTION], "limit": 5}).get("features", [])
+    rx = re.compile(r"CPC(\d{2})(\d{3})(\d{4})")
+    cands = []
+    for ft in feats:
+        for name, a in (ft.get("assets") or {}).items():
+            up = os.path.basename(name).upper()
+            m = rx.search(up)
+            if m and up.endswith(".H5"):
+                yy, doy, hhmm = int(m.group(1)), int(m.group(2)), m.group(3)
+                when = (dt.datetime(2000 + yy, 1, 1, int(hhmm[:2]), int(hhmm[2:]), tzinfo=dt.timezone.utc)
+                        + dt.timedelta(days=doy - 1))
+                cands.append((when, name, a.get("href"), a.get("created", "")))
+    if not cands:
+        allnames = sorted({os.path.basename(n)[:3].lower() for ft in feats for n in (ft.get("assets") or {})})
+        print("  Keine CPC-Assets gefunden. Vorhandene Produkt-Prefixe:", allnames)
+        return
+    cands.sort(reverse=True)
+    when, name, href, created = cands[0]
+    age = (base - when).total_seconds() / 60.0
+    print(f"  Neuestes CPC: {name}")
+    print(f"  >> FRISCHE: Produktzeit {when:%H:%M}Z | publiziert {created} | Build-Uhr {base:%H:%M}Z | Alter {age:.0f} min")
+    p = os.path.join(tmp, "cpc_probe.h5")
+    download(href, p)
+    with h5py.File(p, "r") as f:
+        w = dict(f["dataset1/data1/what"].attrs)
+        q = w.get("quantity", b"?"); q = q.decode() if isinstance(q, bytes) else q
+        print(f"  ODIM: quantity={q}  gain={w.get('gain')}  offset={w.get('offset')}  "
+              f"nodata={w.get('nodata')}  undetect={w.get('undetect')}")
+    _, field = radar_grid(p)                                   # -> WGS84-Raster wie das Radar
+    print(f"  Feld: min={np.nanmin(field):.2f}  max={np.nanmax(field):.2f}  mittel={np.nanmean(field):.3f}")
+    ix = int((7.863 - DST_W) / DST_RES); iy = int((DST_N - 46.686) / DST_RES)
+    v = field[iy, ix]
+    print(f"  >> INTERLAKEN letzte Stunde: {('%.2f mm' % v) if np.isfinite(v) else 'kein Wert'} "
+          f"(CombiPrecip, bodenkorrigiert)")
