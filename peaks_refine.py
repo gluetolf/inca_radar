@@ -18,7 +18,8 @@ Aufruf:
 
 import io, os, sys, re, math, json, zipfile, unicodedata, urllib.request
 
-GEONAMES_URL = "https://download.geonames.org/export/dump/CH.zip"
+GEONAMES_COUNTRIES = ["CH", "FR", "IT", "DE", "AT"]
+GEONAMES_URL = "https://download.geonames.org/export/dump/{cc}.zip"
 
 # ---------------------------------------------------------------------------
 # Kuratierte Gipfel:  (Anzeigename, Naeherung_lat, Naeherung_lon, Hoehe_Fallback, Bekanntheit)
@@ -138,6 +139,48 @@ PEAKS = [
     ('Piz Terri', 46.556, 8.96, 3149, 30),
     ('Nesthorn', 46.428, 7.938, 3822, 26),
     ('Ruinette', 45.972, 7.386, 3875, 24),
+    # ---- Ausland (innerhalb der Datenbox 2.6-12.5E / 43.6-49.5N) ----
+    ('Mont Blanc', 45.833, 6.865, 4806, 95),
+    ('Zugspitze', 47.421, 10.985, 2962, 88),
+    ('Drei Zinnen', 46.618, 12.303, 2999, 74),
+    ('Gran Paradiso', 45.518, 7.267, 4061, 72),
+    ('Marmolada', 46.434, 11.851, 3343, 70),
+    ('Mont Ventoux', 44.174, 5.279, 1909, 68),
+    ('Monviso', 44.667, 7.09, 3841, 66),
+    ('Ortler', 46.509, 10.543, 3905, 66),
+    ('Barre des Écrins', 44.924, 6.36, 4102, 64),
+    ('Aiguille du Midi', 45.879, 6.887, 3842, 62),
+    ('Feldberg', 47.874, 7.998, 1493, 60),
+    ('Wildspitze', 46.885, 10.867, 3768, 60),
+    ('Grandes Jorasses', 45.869, 6.988, 4208, 58),
+    ('Grossvenediger', 47.109, 12.346, 3657, 56),
+    ('La Meije', 45.006, 6.308, 3983, 54),
+    ('Grande Casse', 45.406, 6.859, 3855, 54),
+    ('Similaun', 46.764, 10.879, 3599, 52),
+    ('Grand Ballon', 47.901, 7.1, 1424, 52),
+    ('Schesaplana', 47.053, 9.713, 2964, 50),
+    ('Aiguille Verte', 45.934, 6.97, 4122, 50),
+    ('Mont Pelvoux', 44.902, 6.34, 3946, 48),
+    ('Adamello', 46.16, 10.5, 3539, 48),
+    ('Rosengarten', 46.469, 11.64, 2981, 48),
+    ('Nebelhorn', 47.421, 10.342, 2224, 48),
+    ('Wendelstein', 47.703, 12.013, 1838, 48),
+    ('Sassolungo', 46.527, 11.743, 3181, 46),
+    ('Monte Baldo', 45.75, 10.85, 2218, 46),
+    ('Cima Tosa', 46.151, 10.87, 3173, 46),
+    ('Hochfeiler', 46.972, 11.727, 3510, 44),
+    ("Ballon d'Alsace", 47.822, 6.842, 1247, 44),
+    ('Crêt de la Neige', 46.27, 5.941, 1720, 44),
+    ('Civetta', 46.381, 12.055, 3220, 44),
+    ('Zimba', 47.07, 9.867, 2643, 44),
+    ('Valluga', 47.157, 10.213, 2811, 42),
+    ('Olperer', 47.054, 11.657, 3476, 42),
+    ('Parseierspitze', 47.176, 10.472, 3036, 42),
+    ('Belchen', 47.822, 7.833, 1414, 42),
+    ('Presanella', 46.222, 10.66, 3558, 40),
+    ('Hochvogel', 47.381, 10.442, 2592, 40),
+    ('Herzogstand', 47.661, 11.331, 1731, 40),
+    ('Pelmo', 46.418, 12.121, 3168, 40),
 ]
 
 # ---------------------------------------------------------------------------
@@ -150,11 +193,19 @@ def deacc(s):
     return s
 
 def load_geonames_peaks():
-    """CH.zip laden -> Liste von Gipfeln (feature_class T): (namen_set, lat, lon, elev)."""
-    print("Lade GeoNames CH.zip ...")
-    data = urllib.request.urlopen(GEONAMES_URL, timeout=120).read()
-    zf = zipfile.ZipFile(io.BytesIO(data))
-    raw = zf.read("CH.txt").decode("utf-8")
+    """Laenderdateien (CH + Nachbarn) laden -> Gipfel (feature_class T): (namen_set, lat, lon, elev)."""
+    peaks = []
+    for cc in GEONAMES_COUNTRIES:
+        print(f"Lade GeoNames {cc}.zip ...")
+        data = urllib.request.urlopen(GEONAMES_URL.format(cc=cc), timeout=300).read()
+        zf = zipfile.ZipFile(io.BytesIO(data))
+        raw = zf.read(f"{cc}.txt").decode("utf-8")
+        peaks += _parse_peaks(raw)
+    print(f"  {len(peaks)} Berg-/Gipfel-Eintraege gesamt (CH+FR+IT+DE+AT)")
+    return peaks
+
+
+def _parse_peaks(raw):
     peaks = []
     for line in raw.splitlines():
         f = line.split("\t")
@@ -173,7 +224,6 @@ def load_geonames_peaks():
         except ValueError:
             elev = None
         peaks.append((names, lat, lon, elev, f[7]))
-    print(f"  {len(peaks)} Berg-/Gipfel-Eintraege (feature_class T) gelesen")
     return peaks
 
 def best_match(name, rlat, rlon, gn):

@@ -22,6 +22,7 @@
   .lake-label{background:none;border:none;box-shadow:none;font-family:'Montserrat',-apple-system,"Segoe UI",Roboto,sans-serif;font-style:italic;font-weight:500;font-size:11px;
     color:#4d7fa0;letter-spacing:.5px;transform:translate(-50%,-50%);
     text-shadow:0 0 3px #fff,0 0 3px #fff,0 0 6px #fff;white-space:nowrap;pointer-events:auto;cursor:pointer}
+  .city-label.no-tap{pointer-events:none;cursor:default}
   .city-dot{width:5px;height:5px;border-radius:50%;background:#54585c;box-shadow:0 0 0 2px #fff;margin:0 auto 2px}
   .city-home .city-dot{background:var(--green);box-shadow:0 0 0 2px #fff,0 0 8px var(--green)}
   .city-home{color:var(--green-dark)}
@@ -169,9 +170,9 @@
 </div></div>
 <div class="loading" id="loading"><div class="errbox" id="loadtext"><div class="spinner"></div>Daten werden geladen…</div></div>
 
-<script src="places.js?v=2"></script>
+<script src="places.js?v=3"></script>
 <script src="fplaces.js?v=3"></script>
-<script src="peaks.js?v=2"></script>
+<script src="peaks.js?v=3"></script>
 
 <script>
 /* Viewer: laedt frames.json (Liste von Radar-/Vorhersagebildern) und animiert sie
@@ -293,9 +294,11 @@
   if(window.FCITIES&&window.FCITIES.length) CITIES=CITIES.concat(window.FCITIES);  // + Auslandsorte (fplaces.js)
   function onLabelTap(e){ var ll=e.target.getLatLng(); pinned={name:e.target._name, key:keyFor(ll)}; map.panTo(ll); }   // Label antippen -> zentrieren + genau diesen Namen anzeigen
   var cityMarkers=CITIES.map(function(c){
-    var m=L.marker([c[1],c[2]],{interactive:true,keyboard:false,icon:L.divIcon({
-      className:'city-label',html:'<div class="city-dot"></div>'+c[0],iconSize:[0,0],iconAnchor:[0,0]})});
-    m._name=c[0]; m.on('click',onLabelTap);
+    // Orte AUSSERHALB des Datenperimeters (nur Kontext, keine Daten) sind nicht antippbar.
+    var inBox = c[1]>=43.6 && c[1]<=49.5 && c[2]>=2.6 && c[2]<=12.5;
+    var m=L.marker([c[1],c[2]],{interactive:inBox,keyboard:false,icon:L.divIcon({
+      className:'city-label'+(inBox?'':' no-tap'),html:'<div class="city-dot"></div>'+c[0],iconSize:[0,0],iconAnchor:[0,0]})});
+    m._name=c[0]; if(inBox) m.on('click',onLabelTap);
     return {mz:c[3],m:m};
   });
   // nach Wichtigkeit sortiert (kleinere Zoomschwelle = wichtiger); Anzeige/Entzerrung in updateLabels()

@@ -33,6 +33,13 @@ window.CITIES=[
 
 // ---- Seen-Labels [Name, lat, lon, abZoom] ----
 window.LAKES=[
+    // Ausland (innerhalb der Datenbox)
+    ["Gardasee",45.64,10.63,9],["Comersee",46.02,9.26,9],
+    ["Lac d'Annecy",45.85,6.17,10],["Lac du Bourget",45.73,5.86,10],["Iseosee",45.72,10.08,10],
+    ["Chiemsee",47.87,12.40,10],["Starnberger See",47.90,11.31,10],["Lac de Serre-Ponçon",44.50,6.32,10],
+    ["Ammersee",48.00,11.12,11],["Tegernsee",47.72,11.74,11],["Walchensee",47.59,11.34,11],
+    ["Achensee",47.43,11.71,11],["Reschensee",46.80,10.53,11],["Ortasee",45.80,8.40,11],
+    ["Lago di Varese",45.82,8.74,11],["Forggensee",47.62,10.71,11],["Lac de Sainte-Croix",43.77,6.19,11],
     ["Genfersee",46.45,6.49,9],["Bodensee",47.61,9.30,9],["Neuenburgersee",46.91,6.86,9],["Vierwaldstättersee",47.00,8.43,9],["Zürichsee",47.22,8.69,9],["Lago Maggiore",46.12,8.79,9],
     ["Lago di Lugano",46.00,8.97,9],["Thunersee",46.68,7.72,9],["Bielersee",47.08,7.17,9],["Zugersee",47.13,8.49,9],["Brienzersee",46.72,7.96,9],["Walensee",47.12,9.19,9],["Murtensee",46.93,7.08,9],
     ["Sempachersee",47.14,8.15,10],["Hallwilersee",47.28,8.21,10],["Greifensee",47.35,8.68,10],["Sarnersee",46.87,8.23,10],["Lac de la Gruyère",46.66,7.10,10],["Ägerisee",47.12,8.63,10],["Sihlsee",47.13,8.78,10],["Lac de Joux",46.62,6.27,10],["Baldeggersee",47.20,8.26,10],
