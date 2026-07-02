@@ -17,12 +17,12 @@
   html,body{height:100%;margin:0}
   body{overflow:hidden;background:#dfe5d8;color:var(--ink)}
   #map{position:absolute;inset:0;background:#dfe5d8;z-index:0}
-  .city-label{background:none;border:none;box-shadow:none;font-family:'Montserrat',-apple-system,"Segoe UI",Roboto,sans-serif;font-weight:600;font-size:12px;color:#2c3422;
+  .city-label{background:none;border:none;box-shadow:none;font-family:'Montserrat',-apple-system,"Segoe UI",Roboto,sans-serif;font-weight:600;font-size:12px;color:#54585c;
     text-shadow:0 0 3px #fff,0 0 3px #fff,0 0 6px #fff;white-space:nowrap;pointer-events:auto;cursor:pointer}
   .lake-label{background:none;border:none;box-shadow:none;font-family:'Montserrat',-apple-system,"Segoe UI",Roboto,sans-serif;font-style:italic;font-weight:500;font-size:11px;
-    color:#1b5a8c;letter-spacing:.5px;transform:translate(-50%,-50%);
+    color:#4d7fa0;letter-spacing:.5px;transform:translate(-50%,-50%);
     text-shadow:0 0 3px #fff,0 0 3px #fff,0 0 6px #fff;white-space:nowrap;pointer-events:auto;cursor:pointer}
-  .city-dot{width:5px;height:5px;border-radius:50%;background:#2c3422;box-shadow:0 0 0 2px #fff;margin:0 auto 2px}
+  .city-dot{width:5px;height:5px;border-radius:50%;background:#54585c;box-shadow:0 0 0 2px #fff;margin:0 auto 2px}
   .city-home .city-dot{background:var(--green);box-shadow:0 0 0 2px #fff,0 0 8px var(--green)}
   .city-home{color:var(--green-dark)}
   .peak-label{background:none;border:none;box-shadow:none;white-space:nowrap;pointer-events:auto;cursor:pointer}
@@ -169,7 +169,8 @@
 </div></div>
 <div class="loading" id="loading"><div class="errbox" id="loadtext"><div class="spinner"></div>Daten werden geladen…</div></div>
 
-<script src="places.js?v=1"></script>
+<script src="places.js?v=2"></script>
+<script src="fplaces.js?v=1"></script>
 <script src="peaks.js?v=2"></script>
 
 <script>
@@ -232,52 +233,15 @@
   map.attributionControl.setPrefix(false);
   var LIGHT="https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png";
   var DARK ="https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png";
-  var LBL_L="https://{s}.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}{r}.png";
-  var LBL_D="https://{s}.basemaps.cartocdn.com/dark_only_labels/{z}/{x}/{y}{r}.png";
   var base=L.tileLayer(LIGHT,{attribution:'© OpenStreetMap, © CARTO · Daten: MeteoSchweiz, DWD, Météo-France',maxZoom:19}).addTo(map);
-  // Label-Ebene, exakt entlang der Schweizer Grenze ausgespart: im Ausland Ortsnamen aus der
-  // Basiskarte, in der Schweiz unsere eigenen Labels (keine Doppelung, kein grobes Rechteck mehr).
-  map.createPane('lbl'); map.getPane('lbl').style.zIndex=450; map.getPane('lbl').style.pointerEvents='none';
   // Hintergrund-Label-Ebene: zwischen Basiskarte (tilePane 200) und Niederschlag (overlayPane 400).
   // Enthaelt Seen- UND Gipfel-Labels -> beide wirken wie Teil der Karte, der Niederschlag liegt darueber.
+  // (Die frueher entlang der Grenze ausgestanzte Basiskarten-Labelschicht ist entfernt - abgeschnittene
+  //  Namen an der Landesgrenze sahen nicht gut aus. Auslandsstaedte stehen jetzt im eigenen CITIES-Set.)
   map.createPane('bglbl'); map.getPane('bglbl').style.zIndex=350; map.getPane('bglbl').style.pointerEvents='none';
-  var ClippedLabels=L.TileLayer.extend({
-    createTile:function(coords,done){
-      var tile=document.createElement('canvas'), sz=this.getTileSize();
-      tile.width=sz.x; tile.height=sz.y;
-      var ctx=tile.getContext('2d'), mp=this._map, img=new Image();
-      img.onload=function(){
-        try{
-          ctx.drawImage(img,0,0,sz.x,sz.y);
-          var B=window.CH_BORDER;
-          if(B&&B.length){                                    // Schweiz aus den Labels ausstanzen
-            ctx.globalCompositeOperation='destination-out';
-            ctx.beginPath();
-            var ox=coords.x*sz.x, oy=coords.y*sz.y;
-            for(var k=0;k<B.length;k++){var p=mp.project([B[k][0],B[k][1]],coords.z);
-              k?ctx.lineTo(p.x-ox,p.y-oy):ctx.moveTo(p.x-ox,p.y-oy);}
-            ctx.closePath(); ctx.fill();
-            // weiche Kante: Grenze mehrfach halbtransparent nachziehen -> angeschnittene
-            // Namen blenden sanft aus statt hart abgeschnitten zu werden
-            ctx.lineJoin='round'; ctx.lineCap='round';
-            for(var lw=2; lw<=14; lw+=4){
-              ctx.globalAlpha=0.35; ctx.lineWidth=lw; ctx.stroke();
-            }
-            ctx.globalAlpha=1;
-            ctx.globalCompositeOperation='source-over';
-          }
-        }catch(e){}
-        done(null,tile);
-      };
-      img.onerror=function(e){done(e,tile);};
-      img.src=this.getTileUrl(coords);
-      return tile;
-    }
-  });
-  var labels=new ClippedLabels(LBL_L,{maxZoom:19,pane:'lbl',detectRetina:false}).addTo(map);
   var dark=false;
   document.getElementById('darkBtn').onclick=function(){dark=!dark;
-    base.setUrl(dark?DARK:LIGHT); labels.setUrl(dark?LBL_D:LBL_L); this.classList.toggle('on',dark);
+    base.setUrl(dark?DARK:LIGHT); this.classList.toggle('on',dark);
     document.body.style.background=dark?'#10140c':'#dfe5d8';document.getElementById('map').style.background=dark?'#10140c':'#dfe5d8';};
   // ---- Hinweis-Balken (Toast) ----
   function toast(html, ms){
@@ -316,15 +280,8 @@
 
   // ---- Ortsmarkierungen: [Name, Breite, Laenge, ab welcher Zoomstufe sichtbar] ----
   // Grosse Staedte ab Zoom 6, mittlere ab 7/8, kleine Orte erst beim Hineinzoomen (9).
-  var CITIES=[
-    ["Zürich",47.376,8.541,6],["Genf",46.204,6.143,6],["Basel",47.559,7.588,6],["Bern",46.948,7.447,6],["Lausanne",46.519,6.633,6],
-    ["Luzern",47.050,8.306,7],["St. Gallen",47.424,9.376,7],["Lugano",46.004,8.951,7],["Chur",46.851,9.532,7],["Winterthur",47.500,8.724,7],["Sion",46.233,7.360,7],
-    ["Fribourg",46.806,7.161,8],["Neuchâtel",46.992,6.931,8],["Biel",47.137,7.247,8],["Thun",46.758,7.628,8],["Bellinzona",46.195,9.027,8],["Zug",47.166,8.517,8],["Davos",46.800,9.836,8],["Montreux",46.433,6.911,8],
-    ["Locarno",46.171,8.799,9],["Schaffhausen",47.697,8.635,9],["Aarau",47.391,8.045,9],["Solothurn",47.208,7.538,9],["Brig",46.316,7.988,9],["Interlaken",46.686,7.863,9],["Bulle",46.619,7.057,9],["La Chaux-de-Fonds",47.100,6.825,9],["Rapperswil",47.226,8.818,9],["Frauenfeld",47.556,8.896,9],["Olten",47.350,7.904,9],["Burgdorf",47.060,7.624,9],["Zofingen",47.288,7.946,9],["Vaduz",47.141,9.521,9],["Baden",47.476,8.306,9],
-    ["Spiez",46.686,7.680,10],["Brienz",46.755,8.038,10],["Meiringen",46.727,8.186,10],["Grindelwald",46.624,8.034,10],["Lauterbrunnen",46.593,7.909,10],["Wengen",46.605,7.922,10],["Zermatt",46.020,7.749,10],["Andermatt",46.635,8.594,10],["Visp",46.294,7.881,10],["Engelberg",46.821,8.405,10],["Gstaad",46.472,7.286,10],["Adelboden",46.493,7.561,10],["Kandersteg",46.497,7.673,10],["Arosa",46.783,9.680,10],["Saas-Fee",46.109,7.929,10],["Crans-Montana",46.308,7.481,10],
-    ["Wil",47.462,9.045,10],["Uster",47.347,8.721,10],["Dübendorf",47.397,8.618,10],["Dietikon",47.402,8.400,10],["Wetzikon",47.323,8.797,10],["Wädenswil",47.230,8.674,10],["Horgen",47.260,8.600,10],["Kloten",47.452,8.585,10],["Bülach",47.521,8.539,10],["Wettingen",47.466,8.317,10],["Wohlen",47.351,8.279,10],["Kreuzlingen",47.651,9.176,10],["Herisau",47.386,9.279,10],["Appenzell",47.331,9.409,10],["Buchs",47.166,9.477,10],["Sargans",47.046,9.443,10],["Bad Ragaz",47.005,9.503,10],["Landquart",46.964,9.563,10],["St. Moritz",46.498,9.838,10],["Schwyz",47.021,8.654,10],["Einsiedeln",47.128,8.752,10],["Altdorf",46.881,8.644,10],["Stans",46.958,8.366,10],["Sarnen",46.896,8.246,10],["Glarus",47.040,9.068,10],["Sursee",47.171,8.111,10],["Liestal",47.484,7.735,10],["Delémont",47.365,7.345,10],["Grenchen",47.192,7.397,10],["Langenthal",47.215,7.789,10],["Yverdon",46.778,6.641,10],["Vevey",46.463,6.843,10],["Nyon",46.383,6.240,10],["Morges",46.511,6.498,10],["Sierre",46.292,7.533,10],["Martigny",46.103,7.073,10],["Aigle",46.318,6.967,10],["Monthey",46.254,6.948,10],["Payerne",46.822,6.938,10],["Köniz",46.924,7.414,10],["Münsingen",46.875,7.562,10],["Lyss",47.073,7.307,10],["Langnau",46.939,7.787,10],["Frutigen",46.588,7.646,10],["Zweisimmen",46.555,7.373,10],["Saanen",46.489,7.260,10],["Lenk",46.459,7.443,10],
-    ["Wilderswil",46.661,7.870,11],["Bönigen",46.683,7.890,11],["Beatenberg",46.697,7.782,11],["Mürren",46.559,7.892,11],["Lungern",46.787,8.158,11],["Giswil",46.834,8.190,11],["Sachseln",46.869,8.240,11],["Klosters",46.869,9.881,11],["Scuol",46.797,10.300,11],["Leukerbad",46.379,7.627,11],["Naters",46.323,7.992,11],["Stein am Rhein",47.660,8.860,11]
-  ];
+  var CITIES=(window.CITIES&&window.CITIES.length)?window.CITIES:[];   // kuratierte Staedte aus places.js
+  if(window.FCITIES&&window.FCITIES.length) CITIES=CITIES.concat(window.FCITIES);  // + Auslandsorte (fplaces.js)
   function onLabelTap(e){ var ll=e.target.getLatLng(); pinned={name:e.target._name, key:keyFor(ll)}; map.panTo(ll); }   // Label antippen -> zentrieren + genau diesen Namen anzeigen
   var cityMarkers=CITIES.map(function(c){
     var m=L.marker([c[1],c[2]],{interactive:true,keyboard:false,icon:L.divIcon({
@@ -335,12 +292,7 @@
   // nach Wichtigkeit sortiert (kleinere Zoomschwelle = wichtiger); Anzeige/Entzerrung in updateLabels()
   var citySorted=cityMarkers.slice().sort(function(a,b){return a.mz-b.mz;});
   // ---- Seenamen: eigene Beschriftung (die Hintergrundkarte zeigt in der CH keine Labels) ----
-  var LAKES=[
-    ["Genfersee",46.45,6.49,9],["Bodensee",47.61,9.30,9],["Neuenburgersee",46.91,6.86,9],["Vierwaldstättersee",47.00,8.43,9],["Zürichsee",47.22,8.69,9],["Lago Maggiore",46.12,8.79,9],
-    ["Lago di Lugano",46.00,8.97,9],["Thunersee",46.68,7.72,9],["Bielersee",47.08,7.17,9],["Zugersee",47.13,8.49,9],["Brienzersee",46.72,7.96,9],["Walensee",47.12,9.19,9],["Murtensee",46.93,7.08,9],
-    ["Sempachersee",47.14,8.15,10],["Hallwilersee",47.28,8.21,10],["Greifensee",47.35,8.68,10],["Sarnersee",46.87,8.23,10],["Lac de la Gruyère",46.66,7.10,10],["Ägerisee",47.12,8.63,10],["Sihlsee",47.13,8.78,10],["Lac de Joux",46.62,6.27,10],["Baldeggersee",47.20,8.26,10],
-    ["Pfäffikersee",47.345,8.785,11],["Silsersee",46.42,9.74,11],["Silvaplanersee",46.45,9.79,11],["Klöntalersee",47.025,8.99,11],["Wägitalersee",47.08,8.89,11],["Lungerersee",46.785,8.16,11],["Oeschinensee",46.50,7.73,11]
-  ];
+  var LAKES=(window.LAKES&&window.LAKES.length)?window.LAKES:[];       // Seen aus places.js
   var lakeMarkers=LAKES.map(function(l){
     var m=L.marker([l[1],l[2]],{pane:'bglbl',interactive:true,keyboard:false,icon:L.divIcon({
       className:'lake-label',html:l[0],iconSize:[0,0],iconAnchor:[0,0]})});

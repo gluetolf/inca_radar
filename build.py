@@ -314,6 +314,9 @@ def build(local_radar=None, local_fc=None, local_icon_dir=None):
     _pk = os.path.join(c.HERE, "peaks.js")                     # Gipfeldaten mitkopieren
     if os.path.exists(_pk):
         shutil.copyfile(_pk, os.path.join(OUT, "peaks.js")); _aux.append("peaks.js")
+    _fp = os.path.join(c.HERE, "fplaces.js")                   # Auslandsorte mitkopieren
+    if os.path.exists(_fp):
+        shutil.copyfile(_fp, os.path.join(OUT, "fplaces.js")); _aux.append("fplaces.js")
     print("Mitkopiert ins site/:", ", ".join(_aux) if _aux else "(keine Zusatzdateien gefunden!)")
     shutil.rmtree(tmp, ignore_errors=True)
     print(f"OK: {len(frames)} Frames -> {OUT}/  (now={manifest['now']})")
