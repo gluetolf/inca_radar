@@ -388,19 +388,7 @@
       }
       return true;
     }
-    // 1) Seen-Labels ZUERST: nach Groesse (kleinere Zoomschwelle = groesserer See). Grosse Seen
-    //    werden zuerst und stabil beschriftet; kleinere weichen groesseren aus.
-    lakeSorted.forEach(function(o){
-      var show=false;
-      if(z>=o.mz){
-        var pt=map.project(o.m.getLatLng()), lw=textW(o.m._name,_fLake);
-        if(box(pt.x-lw/2, pt.y-LH/2, lw, false)){ box(pt.x-lw/2, pt.y-LH/2, lw, true); show=true; }
-      }
-      var on=map.hasLayer(o.m);
-      if(show && !on) o.m.addTo(map); else if(!show && on) map.removeLayer(o.m);
-    });
-    // 2) feste Stadt-Labels: nach Wichtigkeit platzieren, nur wenn Platz frei -> nahe Labels
-    //    (z.B. Interlaken/Bönigen) ueberlappen nicht mehr; das unwichtigere blendet aus.
+    // 1) feste Stadt-Labels ZUERST (hoechste Prioritaet): nach Wichtigkeit platzieren.
     citySorted.forEach(function(o){
       var show=false;
       if(z>=o.mz){ var pt=map.project(o.m.getLatLng()), w=12+textW(o.m._name,_fPlace);
@@ -408,7 +396,7 @@
       var on=map.hasLayer(o.m);
       if(show && !on) o.m.addTo(map); else if(!show && on) map.removeLayer(o.m);
     });
-    // 3) dynamische Ortslabels - am Desktop erst ab Zoom 12, auf Touch ab 11
+    // 2) dynamische Ortslabels - am Desktop erst ab Zoom 12, auf Touch ab 11
     dynMarkers.forEach(function(m){map.removeLayer(m);}); dynMarkers=[];
     if(z >= (touch?11:12)){
       var b=map.getBounds(),s=b.getSouth(),n=b.getNorth(),w=b.getWest(),e=b.getEast();
@@ -426,6 +414,16 @@
         placed++;
       }
     }
+    // 3) Seen-Labels NACH den Orten (weichen Ortslabels aus): nach Groesse, grosse zuerst.
+    lakeSorted.forEach(function(o){
+      var show=false;
+      if(z>=o.mz){
+        var pt=map.project(o.m.getLatLng()), lw=textW(o.m._name,_fLake);
+        if(box(pt.x-lw/2, pt.y-LH/2, lw, false)){ box(pt.x-lw/2, pt.y-LH/2, lw, true); show=true; }
+      }
+      var on=map.hasLayer(o.m);
+      if(show && !on) o.m.addTo(map); else if(!show && on) map.removeLayer(o.m);
+    });
     // 4) Gipfel ZULETZT (niedrigste Prioritaet -> treten hinter Seen/Orte zurueck; dezent, hellgrau).
     //    Label sitzt schraeg rechts oberhalb des Dreiecks; Bereich entsprechend reservieren.
     peakSorted.forEach(function(o){
