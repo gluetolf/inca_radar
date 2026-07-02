@@ -872,3 +872,132 @@ def forecast_latest_precip_asset():
         raise RuntimeError(f"Keine Niederschlags-CSV (rre150) in {FC_COLLECTION}.")
     print("Prognose-Lauf (Referenz):", best[0])
     return best[1]
+
+
+# ============================================================================
+# ETAPPE 1: MeteoSchweiz-Nowcasting (INCA, bodenkorrigiert via CombiPrecip)
+# Diagnose-Probe: findet die Collection, laedt die neueste RR-NetCDF-Datei,
+# druckt Struktur, Einheit, Frische und den Wert fuer Interlaken.
+# Greift NICHT in die Frames ein - reiner Erkundungsschritt.
+# ============================================================================
+NOWCAST_COLLECTION = os.environ.get("NOWCAST_COLLECTION", "")   # leer -> automatisch suchen
+
+
+def _nowcast_find_collection():
+    """Nowcast-Collection in der STAC-Liste finden (folgt Paginierung)."""
+    url = f"{STAC}/collections?limit=100"
+    for _ in range(8):                                      # max 8 Seiten
+        data = _get_json(url, no_cache=True)
+        ids = [c.get("id", "") for c in data.get("collections", [])]
+        hit = [i for i in ids if "nowcast" in i.lower()]
+        if hit:
+            return hit
+        nxt = [l.get("href") for l in data.get("links", []) if l.get("rel") == "next"]
+        if not nxt:
+            return []
+        url = nxt[0]
+    return []
+
+
+def nowcast_probe(tmp, now=None):
+    base = now or dt.datetime.now(dt.timezone.utc)
+    print("NOWCAST-PROBE: starte")
+    # -- 1) Collection bestimmen ------------------------------------------------
+    cid = NOWCAST_COLLECTION
+    if not cid:
+        try:
+            cand = _nowcast_find_collection()
+            print(f"  Nowcast-Collections gefunden: {cand if cand else 'KEINE'}")
+            cid = cand[0] if cand else "ch.meteoschweiz.ogd-nowcasting"
+        except Exception as e:
+            print("  Collection-Suche fehlgeschlagen:", e)
+            cid = "ch.meteoschweiz.ogd-nowcasting"
+    print("  Verwende Collection:", cid)
+
+    # -- 2) neueste RR-Assets suchen (POST /search = ungecacht) ------------------
+    feats = _post_json(f"{STAC}/search", {"collections": [cid], "limit": 20}).get("features", [])
+    print(f"  Items erhalten: {len(feats)}")
+    cands = []                                              # (created, name, href)
+    for ft in feats:
+        for name, a in (ft.get("assets") or {}).items():
+            up = name.upper()
+            if "RR" in up and up.endswith((".NC", ".NETCDF")):
+                cands.append((a.get("created") or a.get("updated") or "", name, a.get("href")))
+    if not cands:
+        allnames = [n for ft in feats for n in (ft.get("assets") or {})]
+        print("  KEINE RR-NetCDF-Assets. Beispiel-Assets:", allnames[:10])
+        return
+    cands.sort(reverse=True)
+    print("  Neueste RR-Assets:")
+    for c_ in cands[:3]:
+        print(f"    {c_[0]}  {c_[1]}")
+    created, name, href = cands[0]
+
+    # -- 3) Datei laden -----------------------------------------------------------
+    p = os.path.join(tmp, "nowcast.nc")
+    download(href, p)
+    sig = open(p, "rb").read(4)
+    print(f"  Geladen: {name}  ({os.path.getsize(p)//1024} KB, Signatur {sig})")
+
+    # -- 4) Struktur lesen ----------------------------------------------------------
+    import netCDF4 as nc
+    ds = nc.Dataset(p)
+    print("  Dimensionen:", {k: len(v) for k, v in ds.dimensions.items()})
+    for vn, v in list(ds.variables.items())[:14]:
+        print(f"    Var {vn}: shape={v.shape} units={getattr(v,'units','?')}")
+
+    # Zeitachse
+    tvar = next((ds.variables[k] for k in ds.variables if k.lower() in ("time", "times")), None)
+    times = []
+    if tvar is not None:
+        try:
+            times = nc.num2date(tvar[:], tvar.units,
+                                only_use_cftime_datetimes=False, only_use_python_datetimes=True)
+            times = [t.replace(tzinfo=dt.timezone.utc) for t in times]
+            print(f"  Zeitschritte: {len(times)}  {times[0]:%H:%M}Z..{times[-1]:%H:%M}Z"
+                  f"  (Schritt {int((times[1]-times[0]).total_seconds()/60) if len(times)>1 else '?'} min)")
+            age = (base - times[0]).total_seconds() / 60.0
+            print(f"  >> FRISCHE: Analyse {times[0]:%H:%M}Z | Build-Uhr {base:%H:%M}Z | Alter {age:.0f} min")
+        except Exception as e:
+            print("  Zeitachse nicht dekodierbar:", e)
+
+    # Datenvariable (3D: time,y,x) finden
+    dvn = None
+    for vn, v in ds.variables.items():
+        if len(v.shape) == 3 and vn.lower() not in ("time",):
+            dvn = vn
+            if vn.upper() == "RR":
+                break
+    if not dvn:
+        print("  Keine 3D-Datenvariable gefunden."); return
+    v = ds.variables[dvn]
+    f0 = np.array(v[0]).astype(float)
+    if hasattr(v, "_FillValue"):
+        f0[f0 == float(v._FillValue)] = np.nan
+    print(f"  Datenvariable: {dvn}  units={getattr(v,'units','?')}  "
+          f"long_name={getattr(v,'long_name','?')}")
+    print(f"  Analyse-Feld: min={np.nanmin(f0):.2f} max={np.nanmax(f0):.2f} mittel={np.nanmean(f0):.3f}")
+
+    # -- 5) Gitter + Interlaken-Wert -------------------------------------------------
+    xv = next((ds.variables[k] for k in ds.variables
+               if k.lower() in ("x", "chx", "easting", "lon_1", "x_1")), None)
+    yv = next((ds.variables[k] for k in ds.variables
+               if k.lower() in ("y", "chy", "northing", "lat_1", "y_1")), None)
+    if xv is not None and yv is not None:
+        xs, ys = np.array(xv[:]).ravel(), np.array(yv[:]).ravel()
+        print(f"  Gitter: x {xs.min():.0f}..{xs.max():.0f}  y {ys.min():.0f}..{ys.max():.0f}")
+        epsg = 2056 if xs.max() > 2e6 else 21781            # LV95 oder LV03
+        from pyproj import Transformer
+        tr = Transformer.from_crs(4326, epsg, always_xy=True)
+        X, Y = tr.transform(7.863, 46.686)                  # Interlaken (lon, lat)
+        ix = int(np.argmin(np.abs(xs - X))); iy = int(np.argmin(np.abs(ys - Y)))
+        # Feld-Orientierung: (time, y, x)
+        try:
+            val = float(f0[iy, ix])
+            print(f"  >> INTERLAKEN jetzt: {val:.2f} {getattr(v,'units','?')} "
+                  f"(EPSG:{epsg}, Zelle x={ix}, y={iy})")
+        except Exception as e:
+            print("  Interlaken-Auslese fehlgeschlagen:", e)
+    else:
+        print("  Keine x/y-Gittervariablen erkannt - Variablenliste oben pruefen.")
+    ds.close()

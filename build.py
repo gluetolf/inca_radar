@@ -109,6 +109,12 @@ def build(local_radar=None, local_fc=None, local_icon_dir=None):
     except Exception as e:
         print("Radar-Teil fehlgeschlagen:", e)
 
+    # ---- ETAPPE 1: Nowcast-Diagnose (INCA/CombiPrecip) - greift nicht in Frames ein ----
+    try:
+        c.nowcast_probe(tmp, now=dt.datetime.now(dt.timezone.utc))
+    except Exception as e:
+        print("NOWCAST-PROBE fehlgeschlagen:", e)
+
     # ---- Zukunft: Mittelwert aus ICON-CH1 + ICON-D2 + AROME, sonst die vorhandenen ----
     future_done = False
     try:
