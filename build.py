@@ -27,22 +27,19 @@ import inca_core as c
 
 
 def _make_share_preview(radar_png, when, out_path):
-    """Erzeugt drei Dateien fuers Link-Teilen (Open Graph):
-    - preview.png       1200x630, CH-zentriert, mit Fussleiste  -> Standard-og:image
-    - preview_full.png  ganze Radar-Domain OHNE Fussleiste      -> Rohmaterial fuer ogimg.php
-    - footer.png        1200x66-Markenleiste mit Zeitstempel    -> klebt ogimg.php unten dran
-    So kann der Server (ogimg.php) fuer geteilte ?c=-Links den exakten Ausschnitt zuschneiden."""
+    """Erzeugt die Dateien fuers Link-Teilen (Open Graph):
+    - radar_full.png  transparentes Radar, ganze Domain  -> Rohmaterial fuer ogimg.php
+    - preview.png     1200x630 Standard-Vorschau, CH-zentriert, im Karten-Design
+                      (Marken-Karte oben links mit Headline + Stand, CTA-Button unten rechts).
+    ogimg.php baut geteilte ?c=-Ausschnitte im selben Design mit dem Ortsnamen als Headline."""
     import re
     from PIL import Image, ImageDraw, ImageFont
     W, H = 1200, 630
-    LW, LE, LS, LN = c.DST_W, c.DST_E, c.DST_S, c.DST_N        # Geografie des Radar-Ausschnitts
+    LW, LE, LS, LN = c.DST_W, c.DST_E, c.DST_S, c.DST_N
     im = Image.open(radar_png).convert("RGBA")
     sc = W / im.width
     nh = int(im.height * sc)
     im = im.resize((W, nh), Image.LANCZOS)
-    # Radar SEPARAT (transparent) fuer den PHP-Zuschnitt: ogimg.php stapelt die Schichten
-    # selbst (Hintergrund, Grenzen, Seen, Fluesse, dann Radar, dann Labels) -> korrekte
-    # Reihenfolge und bei jedem Zoom scharfe Vektoren.
     im.save(os.path.join(os.path.dirname(out_path), "radar_full.png"), "PNG", optimize=True)
     # Schriften fuer ogimg.php mitliefern (DejaVu: frei redistributierbar)
     try:
@@ -54,23 +51,23 @@ def _make_share_preview(radar_png, when, out_path):
                 shutil.copyfile(_src, os.path.join(_fd, _f))
     except Exception:
         pass
-    # Statisches Standard-Preview (mit Grenze/Seen/Fluessen, CH-zentriert, Fussleiste)
+    # ---- Kartenhintergrund: CH-Flaeche, Grenzen, Seen, Fluesse, CH-Kontur, Radar ----
     border_px = None
-    try:                                                        # Schweizer Grenze aus places.js
+    try:
         pj = open(os.path.join(c.HERE, "places.js"), encoding="utf-8").read()
         pts = json.loads(re.search(r"window\.CH_BORDER=(\[\[.*?\]\]);", pj).group(1))
         border_px = [((lon - LW) / (LE - LW) * W, (LN - lat) / (LN - LS) * nh) for lat, lon in pts]
     except Exception:
         pass
     gbg = None
-    try:                                                        # Seen/Fluesse/Grenzen (Natural Earth)
+    try:
         gbg = json.loads(open(os.path.join(c.HERE, "geo_bg.json"), encoding="utf-8").read())
     except Exception:
         pass
     full = Image.new("RGB", (W, nh), (226, 231, 222))
     d = ImageDraw.Draw(full)
     if border_px:
-        d.polygon(border_px, fill=(242, 245, 239))              # CH-Flaeche leicht heller
+        d.polygon(border_px, fill=(242, 245, 239))
     if gbg:
         def _P(lo, la):
             return ((lo - LW) / (LE - LW) * W, (LN - la) / (LN - LS) * nh)
@@ -82,35 +79,48 @@ def _make_share_preview(radar_png, when, out_path):
             d.line([_P(lo, la) for lo, la in seg], fill=(176, 205, 223), width=1)
     if border_px:
         d.line(border_px + [border_px[0]], fill=(148, 156, 144), width=1)
-    full.paste(im, (0, 0), im)                                  # Radar zuoberst
-    # Fussleiste (Marke + Stand) separat rendern
+    full.paste(im, (0, 0), im)
+    # ---- Zuschnitt (CH-zentriert), dann Marken-Karte + CTA ----
+    cy = int((LN - 46.9) / (LN - LS) * nh)
+    top = max(0, min(nh - H, cy - H // 2))
+    out = full.crop((0, top, W, top + H)).convert("RGBA")
     try:
-        f1 = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 30)
-        f2 = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 22)
+        fB = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 26)
+        fH = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 44)
+        fS = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 20)
+        fC = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 24)
     except Exception:
-        f1 = f2 = ImageFont.load_default()
+        fB = fH = fS = fC = ImageFont.load_default()
     try:
         from zoneinfo import ZoneInfo
         stand = when.astimezone(ZoneInfo("Europe/Zurich")).strftime("%d.%m.%y %H:%M")
     except Exception:
         stand = when.strftime("%d.%m.%y %H:%M UTC")
-    bar = 66
-    foot = Image.new("RGB", (W, bar), (24, 30, 22))
-    d3 = ImageDraw.Draw(foot)
-    d3.ellipse([24, 24, 42, 42], fill=(74, 222, 128))
-    d3.text((58, 16), "Niederschlag", font=f1, fill=(240, 244, 238))
+    ov = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    od = ImageDraw.Draw(ov)
+    # Marken-Karte oben links
+    l1, l2, l3 = "Niederschlagsradar", "Schweiz", "Stand " + stand
+    w1 = od.textlength(l1, font=fB); w2 = od.textlength(l2, font=fH); w3 = od.textlength(l3, font=fS)
+    cw = int(max(w1 + 46, w2, w3)) + 56
     try:
-        d3.text((W - 24, 22), f"Stand {stand}", font=f2, fill=(180, 190, 178), anchor="ra")
+        od.rounded_rectangle([24, 24, 24 + cw, 24 + 150], radius=18, fill=(255, 255, 255, 235))
     except Exception:
-        d3.text((W - 260, 22), f"Stand {stand}", font=f2, fill=(180, 190, 178))
-    foot.save(os.path.join(os.path.dirname(out_path), "footer.png"), "PNG", optimize=True)
-    # Standard-Vorschau: CH-zentrierter Zuschnitt + Fussleiste
-    cy = int((LN - 46.9) / (LN - LS) * nh)
-    top = max(0, min(nh - H, cy - H // 2))
-    out = full.crop((0, top, W, top + H))
-    out.paste(foot, (0, H - bar))
+        od.rectangle([24, 24, 24 + cw, 24 + 150], fill=(255, 255, 255, 235))
+    od.ellipse([50, 46, 72, 68], fill=(52, 168, 83, 255))
+    od.text((84, 44), l1, font=fB, fill=(40, 46, 38, 255))
+    od.text((52, 82), l2, font=fH, fill=(24, 30, 22, 255))
+    od.text((52, 138), l3, font=fS, fill=(120, 128, 118, 255))
+    # CTA-Button unten rechts
+    ct = "Radar live ansehen  ▶"
+    cwid = int(od.textlength(ct, font=fC))
+    bx1 = W - 24; bx0 = bx1 - cwid - 56; by1 = H - 24; by0 = by1 - 56
+    try:
+        od.rounded_rectangle([bx0, by0, bx1, by1], radius=28, fill=(52, 168, 83, 245))
+    except Exception:
+        od.rectangle([bx0, by0, bx1, by1], fill=(52, 168, 83, 245))
+    od.text((bx0 + 28, by0 + 13), ct, font=fC, fill=(255, 255, 255, 255))
+    out = Image.alpha_composite(out, ov).convert("RGB")
     out.save(out_path, "PNG", optimize=True)
-
 
 def _model_worker(fn, d, h, now, q):
     """Holt EIN Modell in einem eigenen Prozess; legt Ergebnis (oder Fehler) in die Queue."""

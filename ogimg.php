@@ -6,7 +6,7 @@
 // Ortslabels, Pin, Fussleiste mit Ortsname. Ohne/mit ungueltigem ?c=: preview.png.
 error_reporting(0); ini_set('display_errors', '0');            // Notices wuerden das PNG zerstoeren
 
-$W = 1200; $H = 630; $BAR = 66; $MH = $H - $BAR;
+$W = 1200; $H = 630; $MH = $H;                                 // Karte vollflaechig
 $LW = 2.6; $LE = 12.5; $LS = 43.6; $LN = 49.5;                 // Radar-Domain (wie DST_* im Build)
 $FONT  = __DIR__ . '/fonts/DejaVuSans.ttf';
 $FONTB = __DIR__ . '/fonts/DejaVuSans-Bold.ttf';
@@ -144,17 +144,46 @@ imagefilledellipse($out,$cx,$cy,26,26,$ring);
 imagefilledellipse($out,$cx,$cy,18,18,$grn);
 imagefilledellipse($out,$cx,$cy,6,6,$ring);
 
-// ---- 7) Fussleiste + Ortsname ----
-$foot = @imagecreatefrompng(__DIR__ . '/footer.png');
-if ($foot) imagecopy($out, $foot, 0, $H-$BAR, 0, 0, $W, $BAR);
+// ---- 7) Marken-Karte (Headline = Ort) oben links + CTA-Button unten rechts ----
+function roundRect($im, $x0, $y0, $x1, $y1, $r, $col) {
+    imagefilledrectangle($im, $x0+$r, $y0, $x1-$r, $y1, $col);
+    imagefilledrectangle($im, $x0, $y0+$r, $x1, $y1-$r, $col);
+    imagefilledellipse($im, $x0+$r, $y0+$r, 2*$r, 2*$r, $col);
+    imagefilledellipse($im, $x1-$r, $y0+$r, 2*$r, 2*$r, $col);
+    imagefilledellipse($im, $x0+$r, $y1-$r, 2*$r, 2*$r, $col);
+    imagefilledellipse($im, $x1-$r, $y1-$r, 2*$r, 2*$r, $col);
+}
 $near = null; $bd = 1e9; $co = cos(deg2rad($lat));
 foreach (array_merge($places, loadArr('places.js','PLACES')) as $p) {
     $d = ($p[1]-$lat)*($p[1]-$lat) + ($p[2]-$lng)*$co*($p[2]-$lng)*$co;
     if ($d < $bd) { $bd = $d; $near = $p[0]; }
 }
-if ($near !== null && $bd < 0.01 && is_file($FONTB)) {
-    $b = imagettfbbox(24, 0, $FONTB, $near);
-    $nx = (int)(($W - ($b[2]-$b[0])) / 2);
-    imagettftext($out, 24, 0, $nx, $H-$BAR+42, imagecolorallocate($out,240,244,238), $FONTB, $near);
+$ort = ($near !== null && $bd < 0.01) ? $near : "Schweiz";
+$stand = '';
+$sf = @stat(__DIR__ . '/radar_full.png');
+if ($sf) { $dtz = new DateTime('@' . $sf['mtime']); $dtz->setTimezone(new DateTimeZone('Europe/Zurich'));
+           $stand = 'Stand ' . $dtz->format('d.m.y H:i'); }
+if (is_file($FONTB) && is_file($FONT)) {
+    $cardBg = imagecolorallocatealpha($out, 255, 255, 255, 12);
+    $dark   = imagecolorallocate($out, 24, 30, 22);
+    $brandc = imagecolorallocate($out, 40, 46, 38);
+    $grey   = imagecolorallocate($out, 120, 128, 118);
+    $green  = imagecolorallocate($out, 52, 168, 83);
+    $white  = imagecolorallocate($out, 255, 255, 255);
+    $b1 = imagettfbbox(26, 0, $FONTB, "Niederschlagsradar");
+    $b2 = imagettfbbox(44, 0, $FONTB, $ort);
+    $b3 = $stand ? imagettfbbox(20, 0, $FONT, $stand) : array(0,0,0,0);
+    $cw = (int)max(($b1[2]-$b1[0]) + 46, $b2[2]-$b2[0], $b3[2]-$b3[0]) + 56;
+    roundRect($out, 24, 24, 24 + $cw, 174, 18, $cardBg);
+    imagefilledellipse($out, 61, 57, 22, 22, $green);
+    imagettftext($out, 26, 0, 84, 66, $brandc, $FONTB, "Niederschlagsradar");
+    imagettftext($out, 44, 0, 52, 124, $dark, $FONTB, $ort);
+    if ($stand) imagettftext($out, 20, 0, 52, 158, $grey, $FONT, $stand);
+    $ct = "Radar live ansehen  >";
+    $bc = imagettfbbox(24, 0, $FONTB, $ct);
+    $cwid = $bc[2]-$bc[0];
+    $bx1 = $W - 24; $bx0 = $bx1 - $cwid - 56; $by1 = $H - 24; $by0 = $by1 - 56;
+    roundRect($out, $bx0, $by0, $bx1, $by1, 28, $green);
+    imagettftext($out, 24, 0, $bx0 + 28, $by0 + 38, $white, $FONTB, $ct);
 }
 imagepng($out, null, 6);
