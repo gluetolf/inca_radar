@@ -40,17 +40,36 @@ def _make_share_preview(radar_png, when, out_path):
     sc = W / im.width
     nh = int(im.height * sc)
     im = im.resize((W, nh), Image.LANCZOS)
-    full = Image.new("RGB", (W, nh), (226, 231, 222))          # ruhiger Papier-Hintergrund
+    # Vollbild fuer den PHP-Zuschnitt: NUR Hintergrund + Radar. Grenze und Ortsnamen zeichnet
+    # ogimg.php nach dem Zuschnitt in Ausgabe-Aufloesung -> bleiben bei jedem Zoom scharf.
+    plain = Image.new("RGB", (W, nh), (226, 231, 222))          # ruhiger Papier-Hintergrund
+    plain.paste(im, (0, 0), im)
+    plain.save(os.path.join(os.path.dirname(out_path), "preview_full.png"), "PNG", optimize=True)
+    # Schriften fuer ogimg.php mitliefern (DejaVu: frei redistributierbar)
+    try:
+        _fd = os.path.join(os.path.dirname(out_path), "fonts")
+        os.makedirs(_fd, exist_ok=True)
+        for _f in ("DejaVuSans.ttf", "DejaVuSans-Bold.ttf"):
+            _src = os.path.join("/usr/share/fonts/truetype/dejavu", _f)
+            if os.path.exists(_src):
+                shutil.copyfile(_src, os.path.join(_fd, _f))
+    except Exception:
+        pass
+    # Statisches Standard-Preview (mit Grenze, CH-zentriert, Fussleiste)
+    full = plain.copy()
     d = ImageDraw.Draw(full)
+    border_px = None
     try:                                                        # Schweizer Grenze aus places.js
         pj = open(os.path.join(c.HERE, "places.js"), encoding="utf-8").read()
         pts = json.loads(re.search(r"window\.CH_BORDER=(\[\[.*?\]\]);", pj).group(1))
-        px = [((lon - LW) / (LE - LW) * W, (LN - lat) / (LN - LS) * nh) for lat, lon in pts]
-        d.polygon(px, fill=(242, 245, 239), outline=(148, 156, 144))
+        border_px = [((lon - LW) / (LE - LW) * W, (LN - lat) / (LN - LS) * nh) for lat, lon in pts]
     except Exception:
         pass
-    full.paste(im, (0, 0), im)                                  # Radar darueber
-    full.save(os.path.join(os.path.dirname(out_path), "preview_full.png"), "PNG", optimize=True)
+    if border_px:
+        full = Image.new("RGB", (W, nh), (226, 231, 222))
+        d = ImageDraw.Draw(full)
+        d.polygon(border_px, fill=(242, 245, 239), outline=(148, 156, 144))
+        full.paste(im, (0, 0), im)                              # Radar ueber der Grenze
     # Fussleiste (Marke + Stand) separat rendern
     try:
         f1 = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 30)
