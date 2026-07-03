@@ -76,7 +76,7 @@
   .scalewrap{margin-top:12px}
   .scalehead{display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-bottom:5px}
   .scalebar{height:11px;border-radius:6px;background:linear-gradient(90deg,#2d6ee1,#28b4aa,#5fc850,#e6d746,#f09637,#e13732,#aa196e)}
-  #hailLegend{color:#5c1030;font-weight:600}
+  #hailLegend{color:#5c1030;font-weight:600;cursor:pointer;pointer-events:auto}
   .hailsw{display:inline-block;width:16px;height:9px;border-radius:2px;margin-right:4px;vertical-align:-1px;
     background:repeating-linear-gradient(45deg,#480022 0 2px,#e13732 2px 4px)}
   .scalelabels{display:flex;justify-content:space-between;font-size:10px;color:var(--muted);margin-top:4px}
@@ -609,8 +609,8 @@
         hailLayer._hailUrl=Object.values(hailFiles)[0];
       }
     } else if(hailLayer){ hailLayer.setOpacity(0); }
-    var hl=document.getElementById('hailLegend');
-    if(hl) hl.style.display=hailOn?'':'none';
+    hailCells=(hailOn && data.hail.cells)?data.hail.cells:[]; hailCellIdx=0;
+    hailHint();
     nowMs = data.now? new Date(data.now).getTime() : new Date(frames[frames.length-1].time).getTime();
     nowIdx=0;for(var i=0;i<frames.length;i++){if(frames[i].kind==='radar')nowIdx=i;}   // letztes Radarbild = "jetzt"
     // Schleife startet 30 Min vor "jetzt": Frame mit der geringsten Zeitdifferenz dazu
@@ -717,7 +717,31 @@
   // ---- Hagel-Layer (POH, eigene h_*.png je Radarzeit) ----
   // Automatisch AKTIV, sobald irgendwo POH >= 80 % (etablierte "Hagel am Boden"-Schwelle).
   // Als separater Layer gebaut, damit er spaeter auch manuell schaltbar gemacht werden kann.
-  var hailFiles={}, hailLayer=null, hailOn=false;
+  var hailFiles={}, hailLayer=null, hailOn=false, hailCells=[], hailCellIdx=0;
+  function nearestPlace(lat,lon){                       // naechster Ortsname (fuer den Hagel-Hinweis)
+    var best=null,bd=1e9,co=Math.cos(lat*Math.PI/180);
+    function scan(arr){for(var i=0;i<arr.length;i++){var p=arr[i];
+      var d=(p[1]-lat)*(p[1]-lat)+((p[2]-lon)*co)*((p[2]-lon)*co);
+      if(d<bd){bd=d;best=p[0];}}}
+    scan(CITIES); if(window.PLACES)scan(window.PLACES);
+    return (bd<0.04)?best:null;                         // ~20 km Umkreis, sonst kein Name
+  }
+  function hailHint(){                                  // Legende -> klickbarer Hinweis "Hagel · Ort"
+    var hl=document.getElementById('hailLegend'); if(!hl) return;
+    if(!hailOn){hl.style.display='none';return;}
+    var c=hailCells[0], nm=c?nearestPlace(c[0],c[1]):null;
+    hl.innerHTML='<i class="hailsw"></i>Hagel'+(nm?' · '+nm:'')+(hailCells.length>1?' +'+(hailCells.length-1):'');
+    hl.title=c?'Antippen: Karte springt zur Hagelzelle ('+c[2]+'%)':'';
+    hl.style.display='';
+  }
+  document.getElementById('hailLegend').onclick=function(){
+    if(!hailCells.length) return;
+    var c=hailCells[hailCellIdx % hailCells.length];
+    hailCellIdx++;
+    map.setView([c[0],c[1]], Math.max(map.getZoom(),10));   // hinspringen (Chip folgt via moveend)
+    var nm=nearestPlace(c[0],c[1]);
+    this.innerHTML='<i class="hailsw"></i>Hagel'+(nm?' · '+nm:'')+(hailCells.length>1?' ('+(((hailCellIdx-1)%hailCells.length)+1)+'/'+hailCells.length+')':'');
+  };
   function updateHail(){
     if(!hailLayer) return;
     var f=frames[idx];

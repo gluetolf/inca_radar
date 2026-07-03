@@ -906,19 +906,34 @@ def hail_assets(limit=28):
     return {t: found[t] for t in times}
 
 
-def render_hail(h5path, out_png):
+def render_hail(h5path, out_png, max_cells=5):
     """Hagel (BZC/POH) -> EIGENES, transparentes Layer-PNG: dunkle Diagonal-Schraffur,
-    wo POH >= HAIL_POH_MIN. Rueckgabe: (datetime_utc, max_poh_prozent).
-    Liegt im Viewer als separater Layer ueber dem Radar (automatisch aktiv bei Hagel)."""
+    wo POH >= HAIL_POH_MIN. Rueckgabe: (datetime_utc, max_poh_prozent, zellen).
+    zellen = bis zu max_cells Hagelzellen als (lat, lon, poh_max) - Punkt der hoechsten
+    POH je zusammenhaengender Zelle, groesste zuerst (fuer den Spring-zum-Hagel-Hinweis)."""
     when, poh = radar_grid(h5path)                     # gleiches WGS84-Raster wie das Radar
     a = np.nan_to_num(poh, nan=0.0)
     mx = float(np.nanmax(a))
     mask = a >= HAIL_POH_MIN
-    h, w = mask.shape
-    rgba = np.zeros((h, w, 4), dtype=np.uint8)         # transparent
+    cells = []
     if mask.any():
+        h, w = mask.shape
         yy, xx = np.mgrid[0:h, 0:w]
         hatch = mask & (((xx + yy) % 4) < 2)           # Diagonalstreifen, 2 px breit, Abstand 4
+        rgba = np.zeros((h, w, 4), dtype=np.uint8)     # transparent
         rgba[hatch] = (72, 0, 34, 255)                 # sehr dunkles Weinrot - sticht auf jeder Regenfarbe
         Image.fromarray(rgba, "RGBA").save(out_png)
-    return when, mx
+        # Zusammenhaengende Hagelzellen finden, je Zelle den Punkt der maximalen POH
+        from scipy import ndimage
+        lab, n = ndimage.label(mask)
+        if n:
+            sizes = ndimage.sum(mask, lab, range(1, n + 1))
+            for k in np.argsort(sizes)[::-1][:max_cells]:
+                comp = (lab == int(k) + 1)
+                idxs = np.argwhere(comp)
+                vals = a[comp]
+                iy, ix = idxs[int(np.argmax(vals))]
+                lat = DST_N - (int(iy) + 0.5) * DST_RES
+                lon = DST_W + (int(ix) + 0.5) * DST_RES
+                cells.append((round(lat, 3), round(lon, 3), int(round(float(vals.max())))))
+    return when, mx, cells
