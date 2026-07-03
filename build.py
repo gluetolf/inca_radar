@@ -78,18 +78,18 @@ def _make_share_preview(radar_png, when, out_path):
         f1 = f2 = ImageFont.load_default()
     try:
         from zoneinfo import ZoneInfo
-        stand = when.astimezone(ZoneInfo("Europe/Zurich")).strftime("%H:%M")
+        stand = when.astimezone(ZoneInfo("Europe/Zurich")).strftime("%d.%m.%y %H:%M")
     except Exception:
-        stand = when.strftime("%H:%M UTC")
+        stand = when.strftime("%d.%m.%y %H:%M UTC")
     bar = 66
     foot = Image.new("RGB", (W, bar), (24, 30, 22))
     d3 = ImageDraw.Draw(foot)
     d3.ellipse([24, 24, 42, 42], fill=(74, 222, 128))
-    d3.text((58, 16), "Niederschlagsradar Schweiz", font=f1, fill=(240, 244, 238))
+    d3.text((58, 16), "Niederschlag", font=f1, fill=(240, 244, 238))
     try:
-        d3.text((W - 24, 22), f"Stand {stand} · eigermaker.ch/radar", font=f2, fill=(180, 190, 178), anchor="ra")
+        d3.text((W - 24, 22), f"Stand {stand}", font=f2, fill=(180, 190, 178), anchor="ra")
     except Exception:
-        d3.text((W - 460, 22), f"Stand {stand} · eigermaker.ch/radar", font=f2, fill=(180, 190, 178))
+        d3.text((W - 260, 22), f"Stand {stand}", font=f2, fill=(180, 190, 178))
     foot.save(os.path.join(os.path.dirname(out_path), "footer.png"), "PNG", optimize=True)
     # Standard-Vorschau: CH-zentrierter Zuschnitt + Fussleiste
     cy = int((LN - 46.9) / (LN - LS) * nh)
