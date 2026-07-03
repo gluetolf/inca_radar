@@ -40,11 +40,10 @@ def _make_share_preview(radar_png, when, out_path):
     sc = W / im.width
     nh = int(im.height * sc)
     im = im.resize((W, nh), Image.LANCZOS)
-    # Vollbild fuer den PHP-Zuschnitt: NUR Hintergrund + Radar. Grenze und Ortsnamen zeichnet
-    # ogimg.php nach dem Zuschnitt in Ausgabe-Aufloesung -> bleiben bei jedem Zoom scharf.
-    plain = Image.new("RGB", (W, nh), (226, 231, 222))          # ruhiger Papier-Hintergrund
-    plain.paste(im, (0, 0), im)
-    plain.save(os.path.join(os.path.dirname(out_path), "preview_full.png"), "PNG", optimize=True)
+    # Radar SEPARAT (transparent) fuer den PHP-Zuschnitt: ogimg.php stapelt die Schichten
+    # selbst (Hintergrund, Grenzen, Seen, Fluesse, dann Radar, dann Labels) -> korrekte
+    # Reihenfolge und bei jedem Zoom scharfe Vektoren.
+    im.save(os.path.join(os.path.dirname(out_path), "radar_full.png"), "PNG", optimize=True)
     # Schriften fuer ogimg.php mitliefern (DejaVu: frei redistributierbar)
     try:
         _fd = os.path.join(os.path.dirname(out_path), "fonts")
@@ -55,9 +54,7 @@ def _make_share_preview(radar_png, when, out_path):
                 shutil.copyfile(_src, os.path.join(_fd, _f))
     except Exception:
         pass
-    # Statisches Standard-Preview (mit Grenze, CH-zentriert, Fussleiste)
-    full = plain.copy()
-    d = ImageDraw.Draw(full)
+    # Statisches Standard-Preview (mit Grenze/Seen/Fluessen, CH-zentriert, Fussleiste)
     border_px = None
     try:                                                        # Schweizer Grenze aus places.js
         pj = open(os.path.join(c.HERE, "places.js"), encoding="utf-8").read()
@@ -65,11 +62,27 @@ def _make_share_preview(radar_png, when, out_path):
         border_px = [((lon - LW) / (LE - LW) * W, (LN - lat) / (LN - LS) * nh) for lat, lon in pts]
     except Exception:
         pass
+    gbg = None
+    try:                                                        # Seen/Fluesse/Grenzen (Natural Earth)
+        gbg = json.loads(open(os.path.join(c.HERE, "geo_bg.json"), encoding="utf-8").read())
+    except Exception:
+        pass
+    full = Image.new("RGB", (W, nh), (226, 231, 222))
+    d = ImageDraw.Draw(full)
     if border_px:
-        full = Image.new("RGB", (W, nh), (226, 231, 222))
-        d = ImageDraw.Draw(full)
-        d.polygon(border_px, fill=(242, 245, 239), outline=(148, 156, 144))
-        full.paste(im, (0, 0), im)                              # Radar ueber der Grenze
+        d.polygon(border_px, fill=(242, 245, 239))              # CH-Flaeche leicht heller
+    if gbg:
+        def _P(lo, la):
+            return ((lo - LW) / (LE - LW) * W, (LN - la) / (LN - LS) * nh)
+        for seg in gbg.get("borders", []):
+            d.line([_P(lo, la) for lo, la in seg], fill=(170, 177, 167), width=1)
+        for poly in gbg.get("lakes", []):
+            d.polygon([_P(lo, la) for lo, la in poly], fill=(199, 220, 232), outline=(168, 197, 215))
+        for seg in gbg.get("rivers", []):
+            d.line([_P(lo, la) for lo, la in seg], fill=(176, 205, 223), width=1)
+    if border_px:
+        d.line(border_px + [border_px[0]], fill=(148, 156, 144), width=1)
+    full.paste(im, (0, 0), im)                                  # Radar zuoberst
     # Fussleiste (Marke + Stand) separat rendern
     try:
         f1 = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 30)
@@ -442,7 +455,7 @@ def build(local_radar=None, local_fc=None, local_icon_dir=None):
     _fp = os.path.join(c.HERE, "fplaces.js")                   # Auslandsorte mitkopieren
     if os.path.exists(_fp):
         shutil.copyfile(_fp, os.path.join(OUT, "fplaces.js")); _aux.append("fplaces.js")
-    for _sf in ("index.php", "ogimg.php", ".htaccess"):        # Server-Dateien fuer Link-Vorschau
+    for _sf in ("index.php", "ogimg.php", ".htaccess", "geo_bg.json"):   # Server-Dateien fuer Link-Vorschau
         _sp = os.path.join(c.HERE, _sf)
         if os.path.exists(_sp):
             shutil.copyfile(_sp, os.path.join(OUT, _sf)); _aux.append(_sf)
