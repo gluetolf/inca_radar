@@ -1,0 +1,3 @@
+# index.php zuerst: liefert index.html aus und setzt bei geteilten ?c=-Links
+# ausschnittsbezogene Open-Graph-Tags (Vorschaubild via ogimg.php).
+DirectoryIndex index.php index.html
