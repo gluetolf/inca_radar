@@ -8,12 +8,11 @@ geo_bg.json mit Seen, Fluessen und Landesgrenzen im Radar-Gebiet. Daraus
 zeichnen build.py (preview.png) und ogimg.php (geteilte Ausschnitte) den
 Karten-Hintergrund des Vorschaubilds - vektorbasiert, bei jedem Zoom scharf.
 
-Vorbereitung:  pip install pyshp
-Aufruf:        python3 geo_bg.py          # schreibt geo_bg.json
+Aufruf:        python3 geo_bg.py          # schreibt geo_bg.json  (keine Abhaengigkeiten)
 Danach:        geo_bg.json ins Repo legen (gleicher Ordner wie places.js).
 """
 
-import io, json, math, sys, zipfile, urllib.request
+import io, json, struct, sys, zipfile, urllib.request
 
 BASE = "https://naciscdn.org/naturalearth/10m/physical/"
 BASE_CULT = "https://naciscdn.org/naturalearth/10m/cultural/"
@@ -45,39 +44,58 @@ def thin(pts):
     return out
 
 
+def read_shp(buf):
+    """Minimaler .shp-Leser (ohne Abhaengigkeiten): liefert je Shape (points, parts).
+    Unterstuetzt PolyLine (3), Polygon (5) und deren Z/M-Varianten (13/15/23/25) -
+    mehr brauchen die Natural-Earth-Dateien nicht."""
+    shapes = []
+    pos = 100                                             # 100-Byte-Dateikopf ueberspringen
+    total = len(buf)
+    while pos + 8 <= total:
+        (_, clen) = struct.unpack(">ii", buf[pos:pos+8])  # Record-Kopf (big-endian)
+        pos += 8
+        rec = buf[pos:pos + clen*2]
+        pos += clen*2
+        if len(rec) < 4:
+            continue
+        (stype,) = struct.unpack("<i", rec[0:4])
+        if stype not in (3, 5, 13, 15, 23, 25):           # nur Linien/Polygone
+            continue
+        nparts, npoints = struct.unpack("<ii", rec[36:44])
+        parts = list(struct.unpack("<%di" % nparts, rec[44:44+4*nparts]))
+        off = 44 + 4*nparts
+        pts = struct.unpack("<%dd" % (2*npoints), rec[off:off+16*npoints])
+        points = [(pts[2*i], pts[2*i+1]) for i in range(npoints)]
+        shapes.append((points, parts))
+    return shapes
+
+
 def load(url):
     print("Lade", url.rsplit("/", 1)[-1], "...")
     data = urllib.request.urlopen(url, timeout=300).read()
     zf = zipfile.ZipFile(io.BytesIO(data))
     shp = [n for n in zf.namelist() if n.endswith(".shp")][0]
-    dbf = shp[:-4] + ".dbf"
-    import shapefile                      # pyshp
-    return shapefile.Reader(shp=io.BytesIO(zf.read(shp)), dbf=io.BytesIO(zf.read(dbf)))
+    return read_shp(zf.read(shp))
 
 
 def main():
-    try:
-        import shapefile  # noqa
-    except ImportError:
-        sys.exit("Bitte zuerst:  pip install pyshp")
-
     out = {"lakes": [], "rivers": [], "borders": []}
     for key, url, kind in SETS:
         try:
-            rd = load(url)
+            shapes = load(url)
         except Exception as e:
             print("  uebersprungen (", e, ")")
             continue
-        for sh in rd.shapes():
-            if not sh.points:
+        for points, sparts in shapes:
+            if not points:
                 continue
             # grobe Box-Vorpruefung
-            xs = [p[0] for p in sh.points]; ys = [p[1] for p in sh.points]
+            xs = [p[0] for p in points]; ys = [p[1] for p in points]
             if max(xs) < W or min(xs) > E or max(ys) < S or min(ys) > N:
                 continue
-            parts = list(sh.parts) + [len(sh.points)]
+            parts = list(sparts) + [len(points)]
             for i in range(len(parts) - 1):
-                seg = [(round(p[0], 4), round(p[1], 4)) for p in sh.points[parts[i]:parts[i+1]]]
+                seg = [(round(p[0], 4), round(p[1], 4)) for p in points[parts[i]:parts[i+1]]]
                 if len(seg) < 2:
                     continue
                 if not any(inside(lo, la) for lo, la in seg):
