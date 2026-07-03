@@ -189,7 +189,7 @@ if (is_file($FONTB) && is_file($FONT)) {
 // EigerMaker-Logo unten links (dezent; erscheint nur, wenn logo.png vorhanden ist)
 $lg = @imagecreatefrompng(__DIR__ . '/logo.png');
 if ($lg) {
-    $lh = 40; $lw = (int)(imagesx($lg) * $lh / imagesy($lg));
+    $lh = 56; $lw = (int)(imagesx($lg) * $lh / imagesy($lg));
     if ($lw > 220) { $lw = 220; $lh = (int)(imagesy($lg) * $lw / imagesx($lg)); }
     $chx0 = 24; $chy1 = $H - 24; $chx1 = $chx0 + $lw + 28; $chy0 = $chy1 - $lh - 24;
     roundRect($out, $chx0, $chy0, $chx1, $chy1, 14, imagecolorallocatealpha($out, 255, 255, 255, 15));

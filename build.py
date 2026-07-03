@@ -129,7 +129,7 @@ def _make_share_preview(radar_png, when, out_path):
     # EigerMaker-Logo unten links (dezent, nur wenn logo.png im Repo liegt)
     try:
         lg = Image.open(os.path.join(c.HERE, "logo.png")).convert("RGBA")
-        lh = 40
+        lh = 56
         lw = int(lg.width * lh / lg.height)
         if lw > 220: lw = 220; lh = int(lg.height * lw / lg.width)
         lg = lg.resize((lw, lh), Image.LANCZOS)
