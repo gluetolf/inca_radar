@@ -611,6 +611,33 @@
     } else if(hailLayer){ hailLayer.setOpacity(0); }
     var hl=document.getElementById('hailLegend');
     if(hl) hl.style.display=hailOn?'':'none';
+    nowMs = data.now? new Date(data.now).getTime() : new Date(frames[frames.length-1].time).getTime();
+    nowIdx=0;for(var i=0;i<frames.length;i++){if(frames[i].kind==='radar')nowIdx=i;}   // letztes Radarbild = "jetzt"
+    // Schleife startet 30 Min vor "jetzt": Frame mit der geringsten Zeitdifferenz dazu
+    var startMs=nowMs-30*60*1000,best=1e15;loopStart=0;
+    frames.forEach(function(f,i){var d=Math.abs(new Date(f.time).getTime()-startMs);if(d<best){best=d;loopStart=i;}});
+    buildTimeline();
+    buildMs = data.v ? data.v * 1000 : nowMs;          // Zeitpunkt des letzten Builds
+    frameCount = frames.length;
+    updateStamp();
+    document.getElementById('loading').style.display='none';
+    selLatLng=map.getCenter();                 // Chip zeigt von Anfang an die Kartenmitte
+    show(loopStart); if(!playing) play();
+  }
+  // Frische-Anzeige: "Stand HH:MM · vor N Min" – beides bezieht sich auf DIESELBE Zeit
+  // (das juengste Radarbild). Haengt die Quelle (>20 Min), wird das ehrlich benannt.
+  var buildMs = 0, frameCount = 0;
+  function updateStamp(){
+    var el = document.getElementById('updated'); if(!el) return;
+    var dot = document.querySelector('.status .live');
+    if(!nowMs){el.textContent='lädt…';return;}
+    var ageMin = Math.max(0, Math.round((Date.now() - nowMs) / 60000));
+    if(ageMin > 20){                                  // Quelle haengt -> ehrlich benennen statt still alt anzeigen
+      el.textContent = "⚠ MeteoSchweiz-Daten verzögert · Stand " + hm(new Date(nowMs)) + " · vor " + ageMin + " Min";
+    } else {
+      var age = ageMin < 1 ? 'gerade aktualisiert' : ('vor ' + ageMin + ' Min');
+      el.textContent = "Stand " + hm(new Date(nowMs)) + " · " + age;
+    }
     if(dot) dot.style.background = ageMin > 45 ? '#d64545' : (ageMin > 20 ? '#e0a32e' : '');
   }
   function fail(msg){if(frames.length)return;document.getElementById('loadtext').innerHTML="⚠️ "+msg;}
