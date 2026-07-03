@@ -896,8 +896,11 @@ def hail_assets(limit=28):
             m = rx.search(up)
             if m and up.endswith(".H5"):
                 yy, doy, hhmm = int(m.group(1)), int(m.group(2)), m.group(3)
-                when = (dt.datetime(2000 + yy, 1, 1, int(hhmm[:2]), int(hhmm[2:]), tzinfo=dt.timezone.utc)
-                        + dt.timedelta(days=doy - 1))
+                try:                                            # Tagesprodukte tragen z.T. "2400" -> ueberspringen
+                    when = (dt.datetime(2000 + yy, 1, 1, int(hhmm[:2]), int(hhmm[2:]), tzinfo=dt.timezone.utc)
+                            + dt.timedelta(days=doy - 1))
+                except ValueError:
+                    continue
                 found[when] = a.get("href")
     times = sorted(found, reverse=True)[:limit]
     return {t: found[t] for t in times}
