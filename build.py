@@ -41,6 +41,16 @@ def _make_share_preview(radar_png, when, out_path):
     nh = int(im.height * sc)
     im = im.resize((W, nh), Image.LANCZOS)
     im.save(os.path.join(os.path.dirname(out_path), "radar_full.png"), "PNG", optimize=True)
+    # Wasserzeichen-Logo fuer ogimg.php vorbereiten (Alpha vorgeblendet, GD-freundlich)
+    try:
+        _lg = Image.open(os.path.join(c.HERE, "logo.png")).convert("RGBA")
+        _s = 192 / _lg.height
+        _lg = _lg.resize((int(_lg.width * _s), 192), Image.LANCZOS)
+        _a = _lg.getchannel("A").point(lambda v: int(v * 0.42))
+        _lg.putalpha(_a)
+        _lg.save(os.path.join(os.path.dirname(out_path), "logo_wm.png"), "PNG", optimize=True)
+    except Exception:
+        pass
     # Schriften fuer ogimg.php mitliefern (DejaVu: frei redistributierbar)
     try:
         _fd = os.path.join(os.path.dirname(out_path), "fonts")
@@ -126,20 +136,17 @@ def _make_share_preview(radar_png, when, out_path):
     except Exception:
         od.rectangle([bx0, by0, bx1, by1], fill=(52, 168, 83, 245))
     od.text((bx0 + 28, by0 + 13), ct, font=fC, fill=(255, 255, 255, 255))
-    # EigerMaker-Logo unten links (dezent, nur wenn logo.png im Repo liegt)
+    # EigerMaker-Logo als WASSERZEICHEN unten links (halbtransparent, ohne Chip;
+    # erscheint nur, wenn logo.png im Repo liegt)
     try:
         lg = Image.open(os.path.join(c.HERE, "logo.png")).convert("RGBA")
-        lh = 56
+        lh = 64
         lw = int(lg.width * lh / lg.height)
-        if lw > 220: lw = 220; lh = int(lg.height * lw / lg.width)
+        if lw > 240: lw = 240; lh = int(lg.height * lw / lg.width)
         lg = lg.resize((lw, lh), Image.LANCZOS)
-        chx0, chy1 = 24, H - 24
-        chx1, chy0 = chx0 + lw + 28, chy1 - lh - 24
-        try:
-            od.rounded_rectangle([chx0, chy0, chx1, chy1], radius=14, fill=(255, 255, 255, 225))
-        except Exception:
-            od.rectangle([chx0, chy0, chx1, chy1], fill=(255, 255, 255, 225))
-        ov.paste(lg, (chx0 + 14, chy0 + 12), lg)
+        a = lg.getchannel("A").point(lambda v: int(v * 0.42))   # ~40 % Deckkraft
+        lg.putalpha(a)
+        ov.paste(lg, (24, H - 24 - lh), lg)
     except Exception:
         pass
     out = Image.alpha_composite(out, ov).convert("RGB")
@@ -488,7 +495,7 @@ def build(local_radar=None, local_fc=None, local_icon_dir=None):
     _fp = os.path.join(c.HERE, "fplaces.js")                   # Auslandsorte mitkopieren
     if os.path.exists(_fp):
         shutil.copyfile(_fp, os.path.join(OUT, "fplaces.js")); _aux.append("fplaces.js")
-    for _sf in ("index.php", "ogimg.php", ".htaccess", "geo_bg.json", "logo.png"):  # Server-Dateien fuer Link-Vorschau
+    for _sf in ("index.php", "ogimg.php", ".htaccess", "geo_bg.json"):   # Server-Dateien fuer Link-Vorschau
         _sp = os.path.join(c.HERE, _sf)
         if os.path.exists(_sp):
             shutil.copyfile(_sp, os.path.join(OUT, _sf)); _aux.append(_sf)

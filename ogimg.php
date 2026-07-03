@@ -186,13 +186,11 @@ if (is_file($FONTB) && is_file($FONT)) {
     roundRect($out, $bx0, $by0, $bx1, $by1, 28, $green);
     imagettftext($out, 24, 0, $bx0 + 28, $by0 + 38, $white, $FONTB, $ct);
 }
-// EigerMaker-Logo unten links (dezent; erscheint nur, wenn logo.png vorhanden ist)
-$lg = @imagecreatefrompng(__DIR__ . '/logo.png');
+// EigerMaker-Logo als Wasserzeichen unten links (Alpha ist in logo_wm.png vorgeblendet)
+$lg = @imagecreatefrompng(__DIR__ . '/logo_wm.png');
 if ($lg) {
-    $lh = 56; $lw = (int)(imagesx($lg) * $lh / imagesy($lg));
-    if ($lw > 220) { $lw = 220; $lh = (int)(imagesy($lg) * $lw / imagesx($lg)); }
-    $chx0 = 24; $chy1 = $H - 24; $chx1 = $chx0 + $lw + 28; $chy0 = $chy1 - $lh - 24;
-    roundRect($out, $chx0, $chy0, $chx1, $chy1, 14, imagecolorallocatealpha($out, 255, 255, 255, 15));
-    imagecopyresampled($out, $lg, $chx0 + 14, $chy0 + 12, 0, 0, $lw, $lh, imagesx($lg), imagesy($lg));
+    $lh = 64; $lw = (int)(imagesx($lg) * $lh / imagesy($lg));
+    if ($lw > 240) { $lw = 240; $lh = (int)(imagesy($lg) * $lw / imagesx($lg)); }
+    imagecopyresampled($out, $lg, 24, $H - 24 - $lh, 0, 0, $lw, $lh, imagesx($lg), imagesy($lg));
 }
 imagepng($out, null, 6);
