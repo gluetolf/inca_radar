@@ -53,6 +53,8 @@ def build(local_radar=None, local_fc=None, local_icon_dir=None):
     _clean()
     frames, now = [], None
     last_radar = None
+    hail_max_all = 0.0
+    hail_files = {}
     tmp = tempfile.mkdtemp(prefix="inca-")
 
     # ---- Radar: Vergangenheit -> jetzt ----
@@ -77,6 +79,24 @@ def build(local_radar=None, local_fc=None, local_icon_dir=None):
             with cf.ThreadPoolExecutor(max_workers=min(12, len(assets))) as ex:
                 for i, src in ex.map(_dl, list(enumerate(assets))):
                     src_by_i[i] = src
+        # Hagel (POH/BZC, gleicher 5-Min-Takt) passend zu den Radarzeiten laden
+        hail_by_t = {}
+        if not local_radar:
+            try:
+                hmap = c.hail_assets(RADAR_FRAMES + 4)
+                def _dlh(item):
+                    j, (t, href) = item
+                    try:
+                        return t, c.download(href, os.path.join(tmp, f"h{j}.h5"))
+                    except Exception:
+                        return t, None
+                with cf.ThreadPoolExecutor(max_workers=8) as ex:
+                    for t, p_ in ex.map(_dlh, list(enumerate(sorted(hmap.items())))):
+                        if p_:
+                            hail_by_t[t] = p_
+            except Exception as e:
+                print("  Hagel (POH) nicht verfuegbar:", e)
+        hail_max_all = 0.0
         for i, (dtime, href) in enumerate(assets):
             src = src_by_i.get(i)
             if not src:
@@ -89,6 +109,26 @@ def build(local_radar=None, local_fc=None, local_icon_dir=None):
                 rendered.append((when, fn, mx)); radar_src[when] = src
             except Exception as e:
                 print("  Radarbild uebersprungen:", e)
+        # Hagel als EIGENE Layer-Bilder rendern (h_*.png, gleiche 5-Min-Zeiten wie das Radar).
+        hail_files = {}
+        radar_times = {}                                   # nur zu Radarzeiten vorhandene Hagelbilder anbieten
+        for _w, _fn, _mx in rendered:
+            radar_times[_w] = True
+        for _t, _hp in sorted(hail_by_t.items()):
+            if _t not in radar_times:
+                continue
+            try:
+                _tmp = os.path.join(OUT, f"_h_{_t:%H%M}.png")
+                _hw, _hmx = c.render_hail(_hp, _tmp)
+                hail_max_all = max(hail_max_all, _hmx)
+                if os.path.exists(_tmp):                   # nur geschrieben, wenn Schraffur vorhanden
+                    _hfn = "h_" + _t.strftime("%Y%m%dT%H%MZ") + ".png"
+                    os.replace(_tmp, os.path.join(OUT, _hfn))
+                    hail_files[_t.isoformat()] = _hfn
+            except Exception as e:
+                print("  Hagelbild uebersprungen:", e)
+        if hail_by_t:
+            print(f"Hagel (POH): max {hail_max_all:.0f}%  |  {len(hail_files)} Layer-Bilder")
         rendered.sort(key=lambda x: x[0])
         for when, fn, mx in rendered:
             if mx < c.DISPLAY_FLOOR:                          # nichts Sichtbares -> als trocken melden
@@ -303,6 +343,7 @@ def build(local_radar=None, local_fc=None, local_icon_dir=None):
         "bounds": c.BOUNDS,
         "now": now.isoformat() if now else None,
         "v": int(dt.datetime.now(dt.timezone.utc).timestamp()),   # Cache-Buster pro Build
+        "hail": {"max": round(hail_max_all), "files": hail_files},  # Hagel-Layer je Radar-Zeit (auto-aktiv ab 80 %)
         "frames": frames,
     }
     json.dump(manifest, open(os.path.join(OUT, "frames.json"), "w"))

@@ -76,6 +76,9 @@
   .scalewrap{margin-top:12px}
   .scalehead{display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-bottom:5px}
   .scalebar{height:11px;border-radius:6px;background:linear-gradient(90deg,#2d6ee1,#28b4aa,#5fc850,#e6d746,#f09637,#e13732,#aa196e)}
+  #hailLegend{color:#5c1030;font-weight:600}
+  .hailsw{display:inline-block;width:16px;height:9px;border-radius:2px;margin-right:4px;vertical-align:-1px;
+    background:repeating-linear-gradient(45deg,#480022 0 2px,#e13732 2px 4px)}
   .scalelabels{display:flex;justify-content:space-between;font-size:10px;color:var(--muted);margin-top:4px}
   .speed{display:flex;gap:4px;align-items:center}
   .speed button{font-size:11px;font-weight:600;color:var(--muted);background:none;border:none;cursor:pointer;padding:4px 7px;border-radius:7px}
@@ -163,7 +166,7 @@
       <button data-sp="600">langsam</button><button data-sp="350" class="on">normal</button><button data-sp="180">schnell</button></div>
   </div>
   <div class="scalewrap">
-    <div class="scalehead"><span>Niederschlagsintensität</span><span>mm/h</span></div>
+    <div class="scalehead"><span>Niederschlagsintensität</span><span id="hailLegend" style="display:none"><i class="hailsw"></i>Hagel</span><span>mm/h</span></div>
     <div class="scalebar"></div>
     <div class="scalelabels"><span>0.3</span><span>1</span><span>5</span><span>20</span><span>50+</span></div>
   </div>
@@ -543,6 +546,7 @@
       if(idx!==i)return;                                   // inzwischen weitergeschaltet -> verwerfen
       ov(i).setOpacity(0.9);
       overlays.forEach(function(o,j){if(o&&j!==i)o.setOpacity(0)});
+      updateHail();                                        // Hagel-Layer synchron zum sichtbaren Frame
     });
     updateReadout();
   }
@@ -591,33 +595,22 @@
     // Bild-URL mit Versions-Token (?v=...) -> neuer Build = neue URL = frisches Bild (kein Cache)
     frames=data.frames.map(function(f){var o=Object.assign({},f);o._url=(data.tile_base||'')+f.file+'?v='+(data.v||'');return o;});
     frames.forEach(function(f){imgFor(f._url);});                          // alle Bilder sofort vorladen (Mobile: keine Luecken)
-    nowMs = data.now? new Date(data.now).getTime() : new Date(frames[frames.length-1].time).getTime();
-    nowIdx=0;for(var i=0;i<frames.length;i++){if(frames[i].kind==='radar')nowIdx=i;}   // letztes Radarbild = "jetzt"
-    // Schleife startet 30 Min vor "jetzt": Frame mit der geringsten Zeitdifferenz dazu
-    var startMs=nowMs-30*60*1000,best=1e15;loopStart=0;
-    frames.forEach(function(f,i){var d=Math.abs(new Date(f.time).getTime()-startMs);if(d<best){best=d;loopStart=i;}});
-    buildTimeline();
-    buildMs = data.v ? data.v * 1000 : nowMs;          // Zeitpunkt des letzten Builds
-    frameCount = frames.length;
-    updateStamp();
-    document.getElementById('loading').style.display='none';
-    selLatLng=map.getCenter();                 // Chip zeigt von Anfang an die Kartenmitte
-    show(loopStart); if(!playing) play();
-  }
-  // Frische-Anzeige: "Stand HH:MM · vor N Min" – beides bezieht sich auf DIESELBE Zeit
-  // (das juengste Radarbild), damit HH:MM + N Min = aktuelle Uhr ergibt. Punkt gruen/gelb/rot.
-  var buildMs = 0, frameCount = 0;
-  function updateStamp(){
-    var el = document.getElementById('updated'); if(!el) return;
-    var dot = document.querySelector('.status .live');
-    if(!nowMs){el.textContent='lädt…';return;}
-    var ageMin = Math.max(0, Math.round((Date.now() - nowMs) / 60000));
-    if(ageMin > 20){                                  // Quelle hängt -> ehrlich benennen statt still alt anzeigen
-      el.textContent = "⚠ MeteoSchweiz-Daten verzögert · Stand " + hm(new Date(nowMs)) + " · vor " + ageMin + " Min";
-    } else {
-      var age = ageMin < 1 ? 'gerade aktualisiert' : ('vor ' + ageMin + ' Min');
-      el.textContent = "Stand " + hm(new Date(nowMs)) + " · " + age;
-    }
+    // Hagel-Layer: auto-aktiv, wenn irgendwo POH >= 80 %; Bilder je Radarzeit vorladen
+    hailFiles={};
+    hailOn=!!(data.hail && data.hail.max>=80 && data.hail.files && Object.keys(data.hail.files).length);
+    if(hailOn){
+      for(var ht in data.hail.files){
+        hailFiles[ht]=(data.tile_base||'')+data.hail.files[ht]+'?v='+(data.v||'');
+        imgFor(hailFiles[ht]);
+      }
+      if(!hailLayer){
+        hailLayer=L.imageOverlay(Object.values(hailFiles)[0], data.bounds, {opacity:0, interactive:false}).addTo(map);
+        hailLayer.setZIndex(300);                                          // ueber dem Niederschlag
+        hailLayer._hailUrl=Object.values(hailFiles)[0];
+      }
+    } else if(hailLayer){ hailLayer.setOpacity(0); }
+    var hl=document.getElementById('hailLegend');
+    if(hl) hl.style.display=hailOn?'':'none';
     if(dot) dot.style.background = ageMin > 45 ? '#d64545' : (ageMin > 20 ? '#e0a32e' : '');
   }
   function fail(msg){if(frames.length)return;document.getElementById('loadtext').innerHTML="⚠️ "+msg;}
@@ -693,6 +686,18 @@
     else{var c=SCALE_JS[k][1];sw.style.background='rgb('+c[0]+','+c[1]+','+c[2]+')';sw.style.borderColor='rgba(0,0,0,.15)';val.textContent=rangeText(k);}
   }
   map.on('click',function(e){ map.panTo(e.latlng); });          // auf den getippten Punkt zentrieren; Mitte = Fadenkreuz
+
+  // ---- Hagel-Layer (POH, eigene h_*.png je Radarzeit) ----
+  // Automatisch AKTIV, sobald irgendwo POH >= 80 % (etablierte "Hagel am Boden"-Schwelle).
+  // Als separater Layer gebaut, damit er spaeter auch manuell schaltbar gemacht werden kann.
+  var hailFiles={}, hailLayer=null, hailOn=false;
+  function updateHail(){
+    if(!hailLayer) return;
+    var f=frames[idx];
+    var u=(hailOn && f && f.kind==='radar') ? hailFiles[f.time] : null;
+    if(u){ if(hailLayer._hailUrl!==u){ hailLayer.setUrl(u); hailLayer._hailUrl=u; } hailLayer.setOpacity(1); }
+    else hailLayer.setOpacity(0);
+  }
 
   // Handy (schmaler Bildschirm, nicht iPad): Titelbox unten ins Dock verschieben,
   // direkt oberhalb der Zeitleiste. Credits stehen bereits in der Fusszeile.

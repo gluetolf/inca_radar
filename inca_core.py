@@ -872,3 +872,50 @@ def forecast_latest_precip_asset():
         raise RuntimeError(f"Keine Niederschlags-CSV (rre150) in {FC_COLLECTION}.")
     print("Prognose-Lauf (Referenz):", best[0])
     return best[1]
+
+
+# ===================== Hagel: POH (Probability of Hail) =====================
+# MeteoSchweiz-Radarprodukt BZC: Hagelwahrscheinlichkeit am Boden in % pro km2,
+# 5-Minuten-Takt (wie das Radar), ODIM-HDF5 -> gleicher Leser. POH >= 80 % gilt als
+# etablierte Schwelle fuer "Hagel am Boden" (MeteoSchweiz/Nisi et al. 2016).
+# Hagel wird DIREKT in die Radarbilder gerendert: dunkle Diagonal-Schraffur ueber den
+# Niederschlagsfarben - unverwechselbar, da alle Volltonfarben der Skala belegt sind.
+HAIL_COLLECTION = os.environ.get("HAIL_COLLECTION", "ch.meteoschweiz.ogd-radar-hail")
+HAIL_POH_MIN = float(os.environ.get("HAIL_POH_MIN", "80"))     # ab dieser POH wird schraffiert
+
+
+def hail_assets(limit=28):
+    """Die letzten POH-Dateien (BZC) -> {datetime_utc: href} (neueste zuerst begrenzt)."""
+    import re
+    feats = _post_json(f"{STAC}/search", {"collections": [HAIL_COLLECTION], "limit": 100}).get("features", [])
+    rx = re.compile(r"BZC(\d{2})(\d{3})(\d{4})")
+    found = {}
+    for ft in feats:
+        for name, a in (ft.get("assets") or {}).items():
+            up = os.path.basename(name).upper()
+            m = rx.search(up)
+            if m and up.endswith(".H5"):
+                yy, doy, hhmm = int(m.group(1)), int(m.group(2)), m.group(3)
+                when = (dt.datetime(2000 + yy, 1, 1, int(hhmm[:2]), int(hhmm[2:]), tzinfo=dt.timezone.utc)
+                        + dt.timedelta(days=doy - 1))
+                found[when] = a.get("href")
+    times = sorted(found, reverse=True)[:limit]
+    return {t: found[t] for t in times}
+
+
+def render_hail(h5path, out_png):
+    """Hagel (BZC/POH) -> EIGENES, transparentes Layer-PNG: dunkle Diagonal-Schraffur,
+    wo POH >= HAIL_POH_MIN. Rueckgabe: (datetime_utc, max_poh_prozent).
+    Liegt im Viewer als separater Layer ueber dem Radar (automatisch aktiv bei Hagel)."""
+    when, poh = radar_grid(h5path)                     # gleiches WGS84-Raster wie das Radar
+    a = np.nan_to_num(poh, nan=0.0)
+    mx = float(np.nanmax(a))
+    mask = a >= HAIL_POH_MIN
+    h, w = mask.shape
+    rgba = np.zeros((h, w, 4), dtype=np.uint8)         # transparent
+    if mask.any():
+        yy, xx = np.mgrid[0:h, 0:w]
+        hatch = mask & (((xx + yy) % 4) < 2)           # Diagonalstreifen, 2 px breit, Abstand 4
+        rgba[hatch] = (72, 0, 34, 255)                 # sehr dunkles Weinrot - sticht auf jeder Regenfarbe
+        Image.fromarray(rgba, "RGBA").save(out_png)
+    return when, mx
