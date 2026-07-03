@@ -18,7 +18,7 @@ Aufruf:
 Ausgabe in ./site/: index.html, frames.json, r*.png (Radar), f*.png (Vorhersage).
 Quellen: MeteoSchweiz (OGD) und Deutscher Wetterdienst (CC BY 4.0).
 """
-import os, sys, glob, json, shutil, tempfile, datetime as dt
+import os, sys, glob, json, math, shutil, tempfile, datetime as dt
 import warnings
 warnings.filterwarnings("ignore", message="Mean of empty slice")
 warnings.filterwarnings("ignore", message="invalid value encountered")
@@ -80,10 +80,17 @@ def _make_share_preview(radar_png, when, out_path):
     if border_px:
         d.line(border_px + [border_px[0]], fill=(148, 156, 144), width=1)
     full.paste(im, (0, 0), im)
-    # ---- Zuschnitt (CH-zentriert), dann Marken-Karte + CTA ----
-    cy = int((LN - 46.9) / (LN - LS) * nh)
-    top = max(0, min(nh - H, cy - H // 2))
-    out = full.crop((0, top, W, top + H)).convert("RGBA")
+    # ---- Zuschnitt: CH-Gesamtansicht in SEITENRICHTIGER Projektion ----
+    # Die Domain ist eine Plattkarte (Grad linear); auf ~47 N ist 1 Laengengrad aber nur
+    # cos(47) mal so lang wie 1 Breitengrad. Darum wie in ogimg.php: Fenster in Grad mit
+    # cos-Korrektur waehlen und beim Resampling auf 1200x630 entzerren.
+    VC_LAT, VC_LON, VSPAN = 46.82, 8.23, 6.2               # Zentrum + sichtbare Breite (Grad)
+    lat_span = VSPAN * math.cos(math.radians(VC_LAT)) * H / W
+    fx0 = (VC_LON - VSPAN/2 - LW) / (LE - LW) * W
+    fx1 = (VC_LON + VSPAN/2 - LW) / (LE - LW) * W
+    fy0 = (LN - (VC_LAT + lat_span/2)) / (LN - LS) * nh
+    fy1 = (LN - (VC_LAT - lat_span/2)) / (LN - LS) * nh
+    out = full.crop((int(fx0), int(fy0), int(fx1), int(fy1))).resize((W, H), Image.LANCZOS).convert("RGBA")
     try:
         fB = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 26)
         fH = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 44)
@@ -119,6 +126,22 @@ def _make_share_preview(radar_png, when, out_path):
     except Exception:
         od.rectangle([bx0, by0, bx1, by1], fill=(52, 168, 83, 245))
     od.text((bx0 + 28, by0 + 13), ct, font=fC, fill=(255, 255, 255, 255))
+    # EigerMaker-Logo unten links (dezent, nur wenn logo.png im Repo liegt)
+    try:
+        lg = Image.open(os.path.join(c.HERE, "logo.png")).convert("RGBA")
+        lh = 40
+        lw = int(lg.width * lh / lg.height)
+        if lw > 220: lw = 220; lh = int(lg.height * lw / lg.width)
+        lg = lg.resize((lw, lh), Image.LANCZOS)
+        chx0, chy1 = 24, H - 24
+        chx1, chy0 = chx0 + lw + 28, chy1 - lh - 24
+        try:
+            od.rounded_rectangle([chx0, chy0, chx1, chy1], radius=14, fill=(255, 255, 255, 225))
+        except Exception:
+            od.rectangle([chx0, chy0, chx1, chy1], fill=(255, 255, 255, 225))
+        ov.paste(lg, (chx0 + 14, chy0 + 12), lg)
+    except Exception:
+        pass
     out = Image.alpha_composite(out, ov).convert("RGB")
     out.save(out_path, "PNG", optimize=True)
 
@@ -465,7 +488,7 @@ def build(local_radar=None, local_fc=None, local_icon_dir=None):
     _fp = os.path.join(c.HERE, "fplaces.js")                   # Auslandsorte mitkopieren
     if os.path.exists(_fp):
         shutil.copyfile(_fp, os.path.join(OUT, "fplaces.js")); _aux.append("fplaces.js")
-    for _sf in ("index.php", "ogimg.php", ".htaccess", "geo_bg.json"):   # Server-Dateien fuer Link-Vorschau
+    for _sf in ("index.php", "ogimg.php", ".htaccess", "geo_bg.json", "logo.png"):  # Server-Dateien fuer Link-Vorschau
         _sp = os.path.join(c.HERE, _sf)
         if os.path.exists(_sp):
             shutil.copyfile(_sp, os.path.join(OUT, _sf)); _aux.append(_sf)
