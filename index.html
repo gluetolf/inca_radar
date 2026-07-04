@@ -249,7 +249,7 @@
   // ---- Ortsname am Fadenkreuz: exakte Rueckwaerts-Geokodierung des Mittelpunkts (OpenStreetMap/Nominatim).
   //      Liefert den Ort/Weiler, der GENAU an diesem Punkt liegt - nicht den naechsten Listenpunkt. In- und Ausland. ----
   var rgeo={key:null,name:null,pending:false,seq:0,cache:{},timer:null};
-  var pinned=null;   // vom Label-Klick gesetzt: {name,key} -> genau diesen Namen anzeigen statt Geokodierung
+  var pinned=null;   // vom Label-Klick gesetzt: {name,lat,lng} -> genau diesen Namen anzeigen statt Geokodierung
   function keyFor(ll){return ll.lat.toFixed(3)+','+ll.lng.toFixed(3);}        // ~100-m-Raster fuer Cache
   function pickName(a,j){
     var stadt    = a.city || a.town || a.municipality;
@@ -261,7 +261,13 @@
   function maybeFetchPlace(ll){
     var key=keyFor(ll); rgeo.key=key;
     if(pinned){                                                // ein Label wurde angeklickt
-      if(pinned.key===key){ rgeo.name=pinned.name; rgeo.pending=false; return; } // -> genau diesen Namen zeigen
+      // Pin bleibt, solange die Kartenmitte nahe am geklickten Punkt ist. So ueberlebt der
+      // Name das Zoomen (bei dem sich die Mitte minimal verschiebt) - erst echtes Verschieben
+      // weiter weg loest ihn. Toleranz zoomabhaengig (weiter draussen = grosszuegiger).
+      var tol=Math.max(0.01, 0.6/Math.pow(2, map.getZoom()-8));   // in Grad (~1.1 km bei Zoom 8)
+      if(Math.abs(ll.lat-pinned.lat)<tol && Math.abs(ll.lng-pinned.lng)<tol*1.5){
+        rgeo.name=pinned.name; rgeo.pending=false; return;     // -> genau diesen Namen zeigen
+      }
       pinned=null;                                             // Karte woanders hin bewegt -> Pin loesen
     }
     if(key in rgeo.cache){rgeo.name=rgeo.cache[key];rgeo.pending=false;return;} // schon bekannt
@@ -324,7 +330,7 @@
   // Grosse Staedte ab Zoom 6, mittlere ab 7/8, kleine Orte erst beim Hineinzoomen (9).
   var CITIES=(window.CITIES&&window.CITIES.length)?window.CITIES:[];   // kuratierte Staedte aus places.js
   if(window.FCITIES&&window.FCITIES.length) CITIES=CITIES.concat(window.FCITIES);  // + Auslandsorte (fplaces.js)
-  function onLabelTap(e){ var ll=e.target.getLatLng(); pinned={name:e.target._name, key:keyFor(ll)}; map.panTo(ll); }   // Label antippen -> zentrieren + genau diesen Namen anzeigen
+  function onLabelTap(e){ var ll=e.target.getLatLng(); pinned={name:e.target._name, lat:ll.lat, lng:ll.lng}; map.setView(ll, map.getZoom(), {animate:false}); }   // Label antippen -> sofort zentrieren + genau diesen Namen anzeigen
   var cityMarkers=CITIES.map(function(c){
     // Orte AUSSERHALB des Datenperimeters (nur Kontext, keine Daten) sind nicht antippbar.
     var inBox = c[1]>=43.6 && c[1]<=49.5 && c[2]>=2.6 && c[2]<=12.5;
