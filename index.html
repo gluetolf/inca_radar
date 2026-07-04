@@ -236,6 +236,50 @@
       return c;
     }});
   map.addControl(new LocCtl());
+
+  // ---- Fadenkreuz-Offset: die Box unten verdeckt den unteren Kartenteil. Damit der Suedteil
+  //      sichtbar bleibt, liegt das Fadenkreuz (= "Mitte") in der Mitte des FREIEN Bereichs,
+  //      also (Fensterhoehe - Boxhoehe)/2 statt in der Fenstermitte. Alle "Mitte"-Bezuege
+  //      (Ortsname, Permalink, Sampling, Hinspringen) gehen ueber diese zwei Helfer. ----
+  function mapOffsetY(){                          // wie weit die optische Mitte ueber der Fenstermitte liegt (px)
+    var p=document.querySelector('.panel');
+    var h=p?p.getBoundingClientRect().height:0;
+    var pad=14;                                   // Dock-Abstand unten
+    return Math.round((h+pad)/2);
+  }
+  function crosshairLatLng(){                      // lat/lng am Fadenkreuz (nicht Fenstermitte)
+    var sz=map.getSize();
+    return map.containerPointToLatLng([sz.x/2, sz.y/2 - mapOffsetY()]);
+  }
+  function setViewAtCrosshair(ll, zoom, opts){    // bringt einen Ort ans Fadenkreuz (statt Fenstermitte)
+    zoom=(zoom==null?map.getZoom():zoom);
+    var pt=map.project(ll, zoom).add([0, mapOffsetY()]);   // Ziel nach unten schieben -> landet am Fadenkreuz
+    map.setView(map.unproject(pt, zoom), zoom, opts);
+  }
+  // Fadenkreuz-Symbol vertikal auf die Mitte des freien Bereichs setzen
+  function placeCrosshair(){
+    var ch=document.getElementById('crosshair'); if(!ch)return;
+    ch.style.top='calc(50% - '+mapOffsetY()+'px)';
+  }
+  // Bei Groessen-/Orientierungswechsel: Fadenkreuz neu positionieren, Mitte neu erfassen
+  window.addEventListener('resize',function(){ placeCrosshair(); if(typeof refreshCenter==='function') refreshCenter(); });
+  // Leaflet zoomt um die Fenstermitte - unser Fadenkreuz liegt aber hoeher. Ohne Korrektur
+  // wandert der Punkt unterm Fadenkreuz beim Zoomen nach Norden. Daher: vor dem Zoom den
+  // Fadenkreuz-Punkt merken, nach dem Zoom die Karte so ruecken, dass er wieder darunter liegt.
+  var _zAnchor=null;
+  map.on('zoomstart',function(){ _zAnchor=crosshairLatLng(); });
+  map.on('zoomend',function(){
+    if(!_zAnchor) return;
+    var want=map.getSize().y/2 - mapOffsetY();               // Ziel-Pixel (Fadenkreuz)
+    var have=map.latLngToContainerPoint(_zAnchor).y;         // wo der gemerkte Punkt jetzt liegt
+    if(Math.abs(have-want)>1){
+      var c=map.getCenter();
+      var cp=map.latLngToContainerPoint(c);
+      map.panTo(map.containerPointToLatLng([cp.x, cp.y+(have-want)]),{animate:false});
+    }
+    _zAnchor=null;
+  });
+
   // ---- Position in der URL (?c=zoom/lat/lng): teilbar & beim Aufruf direkt anspringen ----
   // Query statt Hash, damit auch der SERVER den Ausschnitt sieht (ausschnittsgenaues
   // Vorschaubild beim Link-Teilen via index.php/ogimg.php). Alte #-Links bleiben lesbar.
@@ -243,18 +287,18 @@
     var m=/(?:^|[?&])c=(\d+(?:\.\d+)?)\/(-?\d+(?:\.\d+)?)\/(-?\d+(?:\.\d+)?)/.exec(location.search);
     if(!m) m=/^#(\d+(?:\.\d+)?)\/(-?\d+(?:\.\d+)?)\/(-?\d+(?:\.\d+)?)/.exec(location.hash);
     return m?{z:Math.round(+m[1]),lat:+m[2],lng:+m[3]}:null;}
-  function writeState(){var c=map.getCenter();
+  function writeState(){var c=crosshairLatLng();
     history.replaceState(null,'',location.pathname+'?c='+map.getZoom()+'/'+c.lat.toFixed(5)+'/'+c.lng.toFixed(5));}
   var _hp=parseState();
-  if(_hp){ map.setView([_hp.lat,_hp.lng],Math.min(13,Math.max(6,_hp.z))); }
+  if(_hp){ setViewAtCrosshair([_hp.lat,_hp.lng],Math.min(13,Math.max(6,_hp.z)),{animate:false}); }
   else if(navigator.geolocation){            // keine Position in der URL -> direkt auf den Standort zoomen
     navigator.geolocation.getCurrentPosition(function(pos){
-      map.setView([pos.coords.latitude,pos.coords.longitude],11);
+      setViewAtCrosshair([pos.coords.latitude,pos.coords.longitude],11);
     }, function(){}, {timeout:8000,maximumAge:600000});
   }
   map.on('moveend',writeState); writeState();
-  // Fadenkreuz-Modell: der angezeigte Wert gilt immer fuer die Kartenmitte (kein Tipp-Pin).
-  function refreshCenter(){ selLatLng=map.getCenter(); maybeFetchPlace(selLatLng); updateReadout(); }
+  // Fadenkreuz-Modell: der angezeigte Wert gilt immer fuer den Punkt am Fadenkreuz (Mitte des freien Bereichs).
+  function refreshCenter(){ selLatLng=crosshairLatLng(); maybeFetchPlace(selLatLng); updateReadout(); }
   map.on('moveend',refreshCenter); setTimeout(refreshCenter,0);  // beim Laden/Reload einmal aktiv abfragen
   // ---- Ortsname am Fadenkreuz: exakte Rueckwaerts-Geokodierung des Mittelpunkts (OpenStreetMap/Nominatim).
   //      Liefert den Ort/Weiler, der GENAU an diesem Punkt liegt - nicht den naechsten Listenpunkt. In- und Ausland. ----
@@ -325,7 +369,7 @@
       toast('Dein Browser unterstützt keine Standortbestimmung.',6000);return;}
     navigator.geolocation.getCurrentPosition(function(pos){
       var ll=L.latLng(pos.coords.latitude,pos.coords.longitude);
-      map.setView(ll, Math.max(map.getZoom(),9)); // zentrieren, Zoom nie verkleinern (nur ggf. hinein)
+      setViewAtCrosshair(ll, Math.max(map.getZoom(),9)); // zentrieren, Zoom nie verkleinern (nur ggf. hinein)
       document.getElementById('toast').style.display='none';
       btn.classList.remove('on');
     },function(err){                            // Fehler: je nach Ursache passender Hinweis
@@ -342,7 +386,7 @@
   // Grosse Staedte ab Zoom 6, mittlere ab 7/8, kleine Orte erst beim Hineinzoomen (9).
   var CITIES=(window.CITIES&&window.CITIES.length)?window.CITIES:[];   // kuratierte Staedte aus places.js
   if(window.FCITIES&&window.FCITIES.length) CITIES=CITIES.concat(window.FCITIES);  // + Auslandsorte (fplaces.js)
-  function onLabelTap(e){ var ll=e.target.getLatLng(); pinned={name:e.target._name, lat:ll.lat, lng:ll.lng}; map.setView(ll, map.getZoom(), {animate:false}); }   // Label antippen -> sofort zentrieren + genau diesen Namen anzeigen
+  function onLabelTap(e){ var ll=e.target.getLatLng(); pinned={name:e.target._name, lat:ll.lat, lng:ll.lng}; setViewAtCrosshair(ll, map.getZoom(), {animate:false}); }   // Label antippen -> ans Fadenkreuz + genau diesen Namen anzeigen
   var cityMarkers=CITIES.map(function(c){
     // Orte AUSSERHALB des Datenperimeters (nur Kontext, keine Daten) sind nicht antippbar.
     var inBox = c[1]>=43.6 && c[1]<=49.5 && c[2]>=2.6 && c[2]<=12.5;
@@ -495,7 +539,7 @@
       firstHit=null;                                            // erstes lokales Ergebnis (fuer Enter)
   function openSearch(){SBOX.style.display='block';SIN.focus();SIN.select();}
   function closeSearch(){SBOX.style.display='none';SRES.innerHTML='';}
-  function gotoPlace(lat,lng){closeSearch();SIN.value='';map.setView([lat,lng],Math.max(map.getZoom(),12));}
+  function gotoPlace(lat,lng){closeSearch();SIN.value='';setViewAtCrosshair([lat,lng],Math.max(map.getZoom(),12));}
   document.getElementById('searchBtn').onclick=function(){SBOX.style.display==='block'?closeSearch():openSearch();};
   // Klick auf den Ortsnamen in der Kopfzeile -> Suche oeffnen (intuitiv)
   var ORTHEAD=document.getElementById('orthead');
@@ -665,7 +709,8 @@
     frameCount = frames.length;
     updateStamp();
     document.getElementById('loading').style.display='none';
-    selLatLng=map.getCenter();                 // Chip zeigt von Anfang an die Kartenmitte
+    placeCrosshair();                          // Fadenkreuz auf die Mitte des freien Bereichs
+    selLatLng=crosshairLatLng();               // Chip zeigt von Anfang an den Punkt am Fadenkreuz
     show(loopStart); if(!playing) play();
   }
   // Frische-Anzeige: "Stand HH:MM · vor N Min" – beides bezieht sich auf DIESELBE Zeit
@@ -747,7 +792,7 @@
     if(rgeo.key===keyFor(selLatLng)){ loc = rgeo.name || (rgeo.pending?'…':''); }
     var oh=document.getElementById('ortname'); if(oh) oh.textContent = loc || 'Schweiz';
   }
-  map.on('click',function(e){ map.panTo(e.latlng); });          // auf den getippten Punkt zentrieren; Mitte = Fadenkreuz
+  map.on('click',function(e){ setViewAtCrosshair(e.latlng); });          // auf den getippten Punkt zentrieren (Fadenkreuz)
 
   // ---- Hagel-Layer (POH, eigene h_*.png je Radarzeit) ----
   // Automatisch AKTIV, sobald irgendwo POH >= 80 % (etablierte "Hagel am Boden"-Schwelle).
@@ -773,7 +818,7 @@
     if(!hailCells.length) return;
     var c=hailCells[hailCellIdx % hailCells.length];
     hailCellIdx++;
-    map.setView([c[0],c[1]], Math.max(map.getZoom(),10));   // hinspringen (Chip folgt via moveend)
+    setViewAtCrosshair([c[0],c[1]], Math.max(map.getZoom(),10));   // hinspringen (Chip folgt via moveend)
     var nm=nearestPlace(c[0],c[1]);
     this.innerHTML='<i class="hailsw"></i>Hagel'+(nm?' · '+nm:'')+(hailCells.length>1?' ('+(((hailCellIdx-1)%hailCells.length)+1)+'/'+hailCells.length+')':'');
   };
