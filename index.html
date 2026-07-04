@@ -76,7 +76,7 @@
   /* Handy: Leaflet-Attribution ausblenden - stattdessen schlanke Lizenzzeile unten in der Box */
   body.phone .leaflet-bottom.leaflet-right{display:none}
   .dockcredit{display:none}
-  body.phone .dockcredit{display:flex;align-items:center;justify-content:center;gap:5px;margin-top:9px;
+  body.phone .dockcredit{display:flex;align-items:center;justify-content:flex-start;gap:5px;margin-top:9px;
     font-size:10px;color:var(--muted)}
   body.phone .dockcredit a{color:var(--green-dark);text-decoration:underline;cursor:pointer}
   .liclink:hover{color:var(--ink)}
@@ -163,8 +163,7 @@
   @keyframes spin{to{transform:rotate(360deg)}}
   @media (max-width:560px){.bigtime{font-size:18px}
     .speed{display:none}
-    .dockhead .ort{font-size:15px}
-    .dock{padding-bottom:24px}}
+    .dockhead .ort{font-size:15px}}
 </style>
 </head>
 <body>
