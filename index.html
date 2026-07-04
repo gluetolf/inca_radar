@@ -56,11 +56,13 @@
   .dockhead .ort{display:flex;align-items:center;gap:8px;font-size:16px;font-weight:700;color:var(--ink);min-width:0}
   .dockhead .ort #ortname{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .dockhead .live{width:8px;height:8px;border-radius:50%;background:var(--green);flex:none}
-  .dockhead .toolgrp{margin-left:auto;display:flex;gap:8px}
+  .dockhead .lupe{margin-left:auto}
   .dockhead button{width:38px;height:38px;border-radius:10px;border:1px solid var(--panel-line);background:rgba(255,255,255,.7);
     cursor:pointer;font-size:15px;color:var(--ink);display:grid;place-items:center;flex:none}
   .dockhead button:active{transform:scale(.94)}
   .dockhead .lupe.on{background:var(--green);color:#fff;border-color:var(--green)}
+  /* Standort-Control (Leaflet-Bar) ueber den Zoom-Buttons */
+  .loc-ctl a{font-size:18px;line-height:30px;color:var(--ink)}
   /* Fusszeile: Stand + Quellen-Link */
   /* Leaflet-Attribution: unaufdringlich, Datenquellen-Link erkennbar.
      Standard unten rechts. Auf dem Handy deckt das Dock die untere Zone,
@@ -87,8 +89,8 @@
   .licinner p{margin:8px 0}
   .licinner a{color:var(--green-dark);text-decoration:underline}
   .licnote{font-size:11px;color:var(--muted);margin-top:14px !important;border-top:1px solid var(--panel-line);padding-top:12px}
-  .dock{position:absolute;left:0;right:0;bottom:0;z-index:500;padding:0 14px 14px;display:flex;justify-content:center}
-  .panel{width:100%;max-width:780px;background:var(--panel);backdrop-filter:blur(10px);border:1px solid var(--panel-line);
+  .dock{position:absolute;left:0;right:0;bottom:0;z-index:500;padding:0 14px 14px;display:flex;justify-content:center;pointer-events:none}
+  .panel{pointer-events:auto;width:100%;max-width:780px;background:var(--panel);backdrop-filter:blur(10px);border:1px solid var(--panel-line);
     border-radius:18px;box-shadow:var(--shadow);padding:12px 16px 14px}
   .row{display:flex;align-items:center;gap:14px}
   .play{width:46px;height:46px;flex:none;border-radius:50%;border:none;cursor:pointer;background:var(--green);color:#fff;
@@ -180,9 +182,6 @@
   <div class="dockhead">
     <span class="ort" id="orthead"><span class="live" id="livedot"></span><span id="ortname">Schweiz</span></span>
     <button class="lupe" id="searchBtn" title="Ort suchen">🔍</button>
-    <div class="toolgrp">
-      <button id="homeBtn" title="Auf meinen Standort zentrieren">⌖</button>
-    </div>
   </div>
   <div class="row">
     <button class="play" id="play" aria-label="Abspielen">▶</button>
@@ -217,6 +216,16 @@
   var map=L.map('map',{center:SWISS,zoom:Z,minZoom:6,maxZoom:13,zoomControl:false,
     scrollWheelZoom:'center',doubleClickZoom:'center',touchZoom:'center'}).setView(SWISS,Z);
   L.control.zoom({position:'bottomright'}).addTo(map);
+  // Standort-Button als eigene Karten-Control DIREKT ueber den Zoom-Buttons (bottomright),
+  // damit Standort/+/- konsistent gestapelt sind (wie bei gaengigen Kartendiensten).
+  var LocCtl=L.Control.extend({options:{position:'bottomright'},
+    onAdd:function(){
+      var c=L.DomUtil.create('div','leaflet-bar loc-ctl');
+      var a=L.DomUtil.create('a','',c); a.href='#'; a.title='Auf meinen Standort zentrieren'; a.id='homeBtn'; a.innerHTML='⌖';
+      L.DomEvent.disableClickPropagation(c);
+      return c;
+    }});
+  map.addControl(new LocCtl());
   // ---- Position in der URL (?c=zoom/lat/lng): teilbar & beim Aufruf direkt anspringen ----
   // Query statt Hash, damit auch der SERVER den Ausschnitt sieht (ausschnittsgenaues
   // Vorschaubild beim Link-Teilen via index.php/ogimg.php). Alte #-Links bleiben lesbar.
@@ -293,7 +302,8 @@
   var GEO_BLOCKED='<b>Standortfreigabe ist blockiert.</b><br>So erlaubst du sie wieder: in der Adressleiste auf das '
     +'Schloss- bzw. Info-Symbol tippen → Standort/Berechtigungen → „Erlauben", dann nochmal auf ⌖ tippen.';
   // ---- Standort-Knopf: per Browser-Geolocation auf den eigenen Standort zentrieren ----
-  document.getElementById('homeBtn').onclick=function(){
+  document.getElementById('homeBtn').onclick=function(e){
+    if(e&&e.preventDefault)e.preventDefault();
     var btn=this; btn.classList.add('on');
     if(!navigator.geolocation){btn.classList.remove('on');
       toast('Dein Browser unterstützt keine Standortbestimmung.',6000);return;}
