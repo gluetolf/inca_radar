@@ -62,8 +62,12 @@
   .dockhead button:active{transform:scale(.94)}
   .dockhead .lupe.on{background:var(--green);color:#fff;border-color:var(--green)}
   /* Fusszeile: Stand + Quellen-Link */
-  .liclink{background:rgba(255,255,255,.7);border:1px solid var(--panel-line);color:var(--muted);cursor:pointer;
-    font-size:15px;display:grid;place-items:center;font-family:inherit}
+  /* Leaflet-Attribution: unaufdringlich, Datenquellen-Link erkennbar.
+     Standard unten rechts. Auf dem Handy deckt das Dock die untere Zone,
+     daher dort nach oben links (frei - das Wasserzeichen sitzt oben rechts). */
+  .leaflet-control-attribution{font-size:10px;background:rgba(255,255,255,.72);padding:2px 8px}
+  .leaflet-control-attribution a#licLink{color:var(--green-dark);cursor:pointer;text-decoration:underline;font-weight:600}
+  body.phone .leaflet-bottom.leaflet-right{bottom:auto;right:auto;top:8px;left:8px}
   .liclink:hover{color:var(--ink)}
   /* Verzoegerungs-Warnung: nur bei haengender Quelle, oben mittig */
   .delaywarn{position:absolute;top:14px;left:50%;transform:translateX(-50%);z-index:600;display:none;
@@ -148,7 +152,8 @@
   @keyframes spin{to{transform:rotate(360deg)}}
   @media (max-width:560px){.bigtime{font-size:18px}
     .speed{display:none}
-    .dockhead .ort{font-size:15px}}
+    .dockhead .ort{font-size:15px}
+    .dock{padding-bottom:24px}}
 </style>
 </head>
 <body>
@@ -177,7 +182,6 @@
     <button class="lupe" id="searchBtn" title="Ort suchen">🔍</button>
     <div class="toolgrp">
       <button id="homeBtn" title="Auf meinen Standort zentrieren">⌖</button>
-      <button class="liclink" id="licLink" title="Datenquellen &amp; Lizenzen">ⓘ</button>
     </div>
   </div>
   <div class="row">
@@ -265,7 +269,7 @@
   }
   map.attributionControl.setPrefix(false);
   var LIGHT="https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png";
-  var base=L.tileLayer(LIGHT,{attribution:'© OpenStreetMap, © CARTO · Daten: MeteoSchweiz, DWD, Météo-France',maxZoom:19}).addTo(map);
+  var base=L.tileLayer(LIGHT,{attribution:'© OpenStreetMap, © CARTO · <a href="#" id="licLink">Daten &amp; Lizenzen</a>',maxZoom:19}).addTo(map);
   // Hintergrund-Label-Ebene: zwischen Basiskarte (tilePane 200) und Niederschlag (overlayPane 400).
   // Enthaelt Seen- UND Gipfel-Labels -> beide wirken wie Teil der Karte, der Niederschlag liegt darueber.
   // (Basiskarten-Labelschichten sind bewusst komplett abgeschaltet: jede Ausstanzung erzeugte
@@ -755,7 +759,12 @@
 
   // Lizenz-/Datenquellen-Box
   var LICBOX=document.getElementById('licbox');
-  document.getElementById('licLink').onclick=function(){LICBOX.classList.add('open');};
+  // Der Datenquellen-Link sitzt in der Leaflet-Attributionsleiste (dynamisch gerendert)
+  // -> per Delegation abfangen. Spart einen eigenen Button in der Kopfzeile.
+  document.addEventListener('click',function(e){
+    var t=e.target;
+    if(t && t.id==='licLink'){ e.preventDefault(); LICBOX.classList.add('open'); }
+  });
   document.getElementById('licClose').onclick=function(){LICBOX.classList.remove('open');};
   LICBOX.onclick=function(e){ if(e.target===LICBOX) LICBOX.classList.remove('open'); };
 
