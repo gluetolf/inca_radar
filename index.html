@@ -224,7 +224,7 @@
   // ---- Karte + Hintergrund (hell/dunkel) ----
   var SWISS=[46.83,8.23], Z=8;                 // Standard-Zentrum/Zoom (Schweiz)
   var map=L.map('map',{center:SWISS,zoom:Z,minZoom:6,maxZoom:13,zoomControl:false,
-    scrollWheelZoom:'center',doubleClickZoom:'center',touchZoom:'center'}).setView(SWISS,Z);
+    scrollWheelZoom:false,doubleClickZoom:false,touchZoom:true}).setView(SWISS,Z);
   L.control.zoom({position:'bottomright'}).addTo(map);
   // Standort-Button als eigene Karten-Control DIREKT ueber den Zoom-Buttons (bottomright),
   // damit Standort/+/- konsistent gestapelt sind (wie bei gaengigen Kartendiensten).
@@ -263,22 +263,24 @@
   }
   // Bei Groessen-/Orientierungswechsel: Fadenkreuz neu positionieren, Mitte neu erfassen
   window.addEventListener('resize',function(){ placeCrosshair(); if(typeof refreshCenter==='function') refreshCenter(); });
-  // Leaflet zoomt um die Fenstermitte - unser Fadenkreuz liegt aber hoeher. Ohne Korrektur
-  // wandert der Punkt unterm Fadenkreuz beim Zoomen nach Norden. Daher: vor dem Zoom den
-  // Fadenkreuz-Punkt merken, nach dem Zoom die Karte so ruecken, dass er wieder darunter liegt.
-  var _zAnchor=null;
-  map.on('zoomstart',function(){ _zAnchor=crosshairLatLng(); });
-  map.on('zoomend',function(){
-    if(!_zAnchor) return;
-    var want=map.getSize().y/2 - mapOffsetY();               // Ziel-Pixel (Fadenkreuz)
-    var have=map.latLngToContainerPoint(_zAnchor).y;         // wo der gemerkte Punkt jetzt liegt
-    if(Math.abs(have-want)>1){
-      var c=map.getCenter();
-      var cp=map.latLngToContainerPoint(c);
-      map.panTo(map.containerPointToLatLng([cp.x, cp.y+(have-want)]),{animate:false});
-    }
-    _zAnchor=null;
-  });
+  // Zoom IMMER um das Fadenkreuz (Mitte des freien Bereichs), nicht um die Fenstermitte.
+  // setZoomAround haelt den geografischen Punkt unterm Fadenkreuz fest -> kein Nachrucken.
+  function crosshairContainerPt(){ return L.point(map.getSize().x/2, map.getSize().y/2 - mapOffsetY()); }
+  var _wheelT=null, _wheelAccum=0;
+  var mapEl=document.getElementById('map');
+  mapEl.addEventListener('wheel',function(e){
+    e.preventDefault();
+    _wheelAccum += (e.deltaY<0?1:-1);                         // hoch = rein
+    if(_wheelT) return;
+    _wheelT=setTimeout(function(){
+      var step=_wheelAccum; _wheelAccum=0; _wheelT=null;
+      if(!step) return;
+      var target=Math.max(6,Math.min(13, map.getZoom()+step));
+      if(target!==map.getZoom()) map.setZoomAround(crosshairContainerPt(), target);
+    },60);                                                    // sanftes Buendeln schneller Wheel-Events
+  },{passive:false});
+  // Doppelklick: um das Fadenkreuz hineinzoomen
+  map.on('dblclick',function(e){ L.DomEvent.stop(e); map.setZoomAround(crosshairContainerPt(), Math.min(13,map.getZoom()+1)); });
 
   // ---- Position in der URL (?c=zoom/lat/lng): teilbar & beim Aufruf direkt anspringen ----
   // Query statt Hash, damit auch der SERVER den Ausschnitt sieht (ausschnittsgenaues
@@ -290,12 +292,22 @@
   function writeState(){var c=crosshairLatLng();
     history.replaceState(null,'',location.pathname+'?c='+map.getZoom()+'/'+c.lat.toFixed(5)+'/'+c.lng.toFixed(5));}
   var _hp=parseState();
-  if(_hp){ setViewAtCrosshair([_hp.lat,_hp.lng],Math.min(13,Math.max(6,_hp.z)),{animate:false}); }
+  // Startansicht erst setzen, wenn die Box gerendert ist (sonst ist mapOffsetY() noch 0
+  // und die Mitte sitzt daneben). Zweistufig: sofort grob, nach Layout nochmal exakt.
+  function applyStartView(){
+    if(_hp){ setViewAtCrosshair([_hp.lat,_hp.lng],Math.min(13,Math.max(6,_hp.z)),{animate:false}); }
+    placeCrosshair();
+  }
+  if(_hp){
+    map.setView([_hp.lat,_hp.lng],Math.min(13,Math.max(6,_hp.z)),{animate:false});  // grob (ohne Offset)
+    requestAnimationFrame(function(){ requestAnimationFrame(applyStartView); });      // exakt, sobald Box Hoehe hat
+  }
   else if(navigator.geolocation){            // keine Position in der URL -> direkt auf den Standort zoomen
     navigator.geolocation.getCurrentPosition(function(pos){
       setViewAtCrosshair([pos.coords.latitude,pos.coords.longitude],11);
     }, function(){}, {timeout:8000,maximumAge:600000});
   }
+  if(document.fonts && document.fonts.ready) document.fonts.ready.then(function(){ placeCrosshair(); });
   map.on('moveend',writeState); writeState();
   // Fadenkreuz-Modell: der angezeigte Wert gilt immer fuer den Punkt am Fadenkreuz (Mitte des freien Bereichs).
   function refreshCenter(){ selLatLng=crosshairLatLng(); maybeFetchPlace(selLatLng); updateReadout(); }
