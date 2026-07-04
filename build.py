@@ -494,7 +494,7 @@ def build(local_radar=None, local_fc=None, local_icon_dir=None):
     _fp = os.path.join(c.HERE, "fplaces.js")                   # Auslandsorte mitkopieren
     if os.path.exists(_fp):
         shutil.copyfile(_fp, os.path.join(OUT, "fplaces.js")); _aux.append("fplaces.js")
-    for _sf in ("index.php", "ogimg.php", ".htaccess", "geo_bg.json"):   # Server-Dateien fuer Link-Vorschau
+    for _sf in ("index.php", "ogimg.php", ".htaccess", "geo_bg.json", "logo.png"):   # Server-/Live-Dateien
         _sp = os.path.join(c.HERE, _sf)
         if os.path.exists(_sp):
             shutil.copyfile(_sp, os.path.join(OUT, _sf)); _aux.append(_sf)

@@ -62,12 +62,16 @@
   .dockhead button:active{transform:scale(.94)}
   .dockhead .lupe.on{background:var(--green);color:#fff;border-color:var(--green)}
   /* Fusszeile: Stand + Quellen-Link */
-  .dockfoot{display:flex;align-items:center;justify-content:center;gap:7px;margin-top:11px;
-    font-size:11px;color:var(--muted);flex-wrap:wrap}
-  .dockfoot .live{width:7px;height:7px;border-radius:50%;background:var(--green);flex:none}
-  .dockfoot .footsep{opacity:.5}
-  .liclink{background:none;border:none;color:var(--muted);cursor:pointer;font-size:11px;padding:0;text-decoration:underline;font-family:inherit}
+  .liclink{background:rgba(255,255,255,.7);border:1px solid var(--panel-line);color:var(--muted);cursor:pointer;
+    font-size:15px;display:grid;place-items:center;font-family:inherit}
   .liclink:hover{color:var(--ink)}
+  /* Verzoegerungs-Warnung: nur bei haengender Quelle, oben mittig */
+  .delaywarn{position:absolute;top:14px;left:50%;transform:translateX(-50%);z-index:600;display:none;
+    background:rgba(224,118,46,.95);color:#fff;font-size:12px;font-weight:600;padding:7px 14px;
+    border-radius:999px;box-shadow:var(--shadow);white-space:nowrap;max-width:92vw}
+  .delaywarn.on{display:block}
+  /* Lupe: gleiche Groesse wie die anderen Kopfzeilen-Buttons (Fadenkreuz) */
+  .dockhead .lupe{font-size:15px}
   /* Lizenz-Box */
   .licbox{position:absolute;inset:0;z-index:1200;display:none;align-items:center;justify-content:center;
     background:rgba(0,0,0,.34);backdrop-filter:blur(2px);padding:20px}
@@ -111,15 +115,6 @@
   .speed{display:flex;gap:4px;align-items:center}
   .speed button{font-size:11px;font-weight:600;color:var(--muted);background:none;border:none;cursor:pointer;padding:4px 7px;border-radius:7px}
   .speed button.on{background:var(--green);color:#fff}
-  .pointchip{position:absolute;top:60px;left:50%;transform:translateX(-50%);z-index:500;display:none;
-    flex-direction:column;align-items:center;gap:2px;min-width:200px;
-    background:var(--panel);backdrop-filter:blur(8px);border:1px solid var(--panel-line);border-radius:14px;box-shadow:var(--shadow);
-    padding:7px 16px;font-size:13px;color:var(--ink);white-space:nowrap;max-width:92vw}
-  .pointchip .pc-top{display:flex;align-items:center;gap:8px;justify-content:center}
-  .pointchip .pc-loc{color:var(--muted)}
-  .pointchip .pc-val{font-weight:700}
-  .pointchip .pc-sw{width:12px;height:12px;border-radius:3px;border:1px solid rgba(0,0,0,.15);flex:none}
-  .pointchip .pc-coord{font-size:11px;color:var(--muted);letter-spacing:.2px;font-variant-numeric:tabular-nums}
   .searchbox{position:absolute;bottom:210px;left:50%;transform:translateX(-50%);z-index:600;display:none;width:min(340px,92vw)}
   .searchbox input{width:100%;box-sizing:border-box;padding:10px 14px;border-radius:12px;border:1px solid var(--panel-line);
     background:var(--panel);backdrop-filter:blur(8px);box-shadow:var(--shadow);color:var(--ink);font-size:14px;outline:none}
@@ -164,11 +159,8 @@
   <input id="searchInput" type="text" placeholder="Ort suchen…" autocomplete="off" spellcheck="false">
   <div class="search-results" id="searchResults"></div>
 </div>
-<div class="pointchip" id="pointchip">
-  <div class="pc-top"><span class="pc-sw" id="pcsw"></span><span class="pc-loc" id="pcloc"></span><span class="pc-val" id="pcval"></span></div>
-  <div class="pc-coord" id="pccoord"></div>
-</div>
 <div class="toast" id="toast"></div>
+<div class="delaywarn" id="delayWarn"></div>
 <div class="licbox" id="licbox">
   <div class="licinner">
     <div class="lichead"><b>Datenquellen &amp; Lizenzen</b><button id="licClose" aria-label="Schließen">✕</button></div>
@@ -185,7 +177,7 @@
     <button class="lupe" id="searchBtn" title="Ort suchen">🔍</button>
     <div class="toolgrp">
       <button id="homeBtn" title="Auf meinen Standort zentrieren">⌖</button>
-      <button id="refreshBtn" title="Neu laden (neueste Version)">⟳</button>
+      <button class="liclink" id="licLink" title="Datenquellen &amp; Lizenzen">ⓘ</button>
     </div>
   </div>
   <div class="row">
@@ -202,11 +194,6 @@
     <div class="scalehead"><span>Niederschlagsintensität</span><span id="hailLegend" style="display:none"><i class="hailsw"></i>Hagel</span><span>mm/h</span></div>
     <div class="scalebar"></div>
     <div class="scalelabels"><span>0.3</span><span>1</span><span>5</span><span>20</span><span>50+</span></div>
-  </div>
-  <div class="dockfoot">
-    <span class="live" id="livefoot"></span><span id="updated">lädt…</span>
-    <span class="footsep">·</span>
-    <button class="liclink" id="licLink">ⓘ Datenquellen</button>
   </div>
 </div></div>
 <div class="loading" id="loading"><div class="errbox" id="loadtext"><div class="spinner"></div>Daten werden geladen…</div></div>
@@ -319,13 +306,6 @@
     {enableHighAccuracy:true,timeout:8000,maximumAge:60000});
   };
   // ---- Refresh-Knopf: neueste Daten holen, ohne URL/Position zu aendern ----
-  document.getElementById('refreshBtn').onclick=function(){
-    var btn=this; btn.classList.add('on');
-    // frames.json wird ohnehin per cache:'no-store' frisch geholt, Bilder ueber ?v=Build-Token.
-    // Daher reicht ein normaler Reload; URL inkl. #Position bleibt erhalten.
-    location.reload();
-  };
-
   // ---- Ortsmarkierungen: [Name, Breite, Laenge, ab welcher Zoomstufe sichtbar] ----
   // Grosse Staedte ab Zoom 6, mittlere ab 7/8, kleine Orte erst beim Hineinzoomen (9).
   var CITIES=(window.CITIES&&window.CITIES.length)?window.CITIES:[];   // kuratierte Staedte aus places.js
@@ -485,10 +465,9 @@
   function closeSearch(){SBOX.style.display='none';SRES.innerHTML='';}
   function gotoPlace(lat,lng){closeSearch();SIN.value='';map.setView([lat,lng],Math.max(map.getZoom(),12));}
   document.getElementById('searchBtn').onclick=function(){SBOX.style.display==='block'?closeSearch():openSearch();};
-  // Klick auf den Ortsnamen im Chip -> Suche oeffnen (intuitiv)
-  var PCLOC=document.getElementById('pcloc');
-  PCLOC.style.cursor='pointer'; PCLOC.title='Ort suchen';
-  PCLOC.addEventListener('click',openSearch);
+  // Klick auf den Ortsnamen in der Kopfzeile -> Suche oeffnen (intuitiv)
+  var ORTHEAD=document.getElementById('orthead');
+  if(ORTHEAD){ ORTHEAD.style.cursor='pointer'; ORTHEAD.title='Ort suchen'; ORTHEAD.addEventListener('click',openSearch); }
   SIN.addEventListener('keydown',function(e){
     if(e.key==='Escape'){closeSearch();}
     else if(e.key==='Enter'){e.preventDefault();
@@ -573,8 +552,6 @@
     idx=i;document.getElementById('slider').value=i;      // Zustand/Zeit/Slider sofort setzen
     var _d=new Date(frames[i].time);
     document.getElementById('bigtime').textContent=dayLabel(_d)+' '+hm(_d);
-    var tag=document.getElementById('tag');
-    if(tag){var L1=label(frames[i]);tag.textContent=L1.txt;tag.className='tag '+L1.cls;}
     document.querySelectorAll('.tick').forEach(function(t,j){t.classList.toggle('active',j===i)});
     if(frames[i+1])imgOf(i+1);if(frames[i-1])imgOf(i-1);  // Nachbarn vorladen
     whenReady(i,function(){                                // Bild erst einblenden, wenn geladen -> altes bleibt bis dahin sichtbar
@@ -663,17 +640,16 @@
   // (das juengste Radarbild). Haengt die Quelle (>20 Min), wird das ehrlich benannt.
   var buildMs = 0, frameCount = 0;
   function updateStamp(){
-    var el = document.getElementById('updated'); if(!el) return;
-    var dot = document.getElementById('livefoot');
-    if(!nowMs){el.textContent='lädt…';return;}
+    var warn = document.getElementById('delayWarn'); if(!warn) return;
+    if(!nowMs){ warn.classList.remove('on'); return; }
     var ageMin = Math.max(0, Math.round((Date.now() - nowMs) / 60000));
     if(ageMin > 20){                                  // Quelle haengt -> ehrlich benennen statt still alt anzeigen
-      el.textContent = "⚠ MeteoSchweiz-Daten verzögert · Stand " + hm(new Date(nowMs)) + " · vor " + ageMin + " Min";
+      warn.textContent = "⚠ MeteoSchweiz-Daten verzögert · Stand " + hm(new Date(nowMs)) + " · vor " + ageMin + " Min";
+      warn.style.background = ageMin > 45 ? 'rgba(214,69,69,.95)' : 'rgba(224,118,46,.95)';
+      warn.classList.add('on');
     } else {
-      var age = ageMin < 1 ? 'gerade aktualisiert' : ('vor ' + ageMin + ' Min');
-      el.textContent = "Stand " + hm(new Date(nowMs)) + " · " + age;
+      warn.classList.remove('on');                    // aktuell -> keine Warnung noetig
     }
-    if(dot) dot.style.background = ageMin > 45 ? '#d64545' : (ageMin > 20 ? '#e0a32e' : '');
   }
   function fail(msg){if(frames.length)return;document.getElementById('loadtext').innerHTML="⚠️ "+msg;}
   // Manifest laden (immer cache-frei: ?Zeitstempel + no-store)
@@ -733,20 +709,11 @@
     return ll.lat.toFixed(4)+'°, '+ll.lng.toFixed(4)+'°';            // ausserhalb -> WGS84
   }
   function updateReadout(){
-    var chip=document.getElementById('pointchip');
-    // Punkt-Anzeige
-    if(!selLatLng){chip.style.display='none';return;}
-    chip.style.display='flex';
-    var loc='';                                              // Ortsname = exakte Rueckwaerts-Geokodierung des Punkts
+    // Nur noch den Ortsnamen in der Dock-Kopfzeile pflegen (Punkt-Anzeige entfernt).
+    if(!selLatLng) return;
+    var loc='';                                              // Ortsname = exakte Rueckwaerts-Geokodierung der Kartenmitte
     if(rgeo.key===keyFor(selLatLng)){ loc = rgeo.name || (rgeo.pending?'…':''); }
-    document.getElementById('pcloc').textContent = loc ? loc+' ·' : '';
     var oh=document.getElementById('ortname'); if(oh) oh.textContent = loc || 'Schweiz';
-    document.getElementById('pccoord').textContent = coordText(selLatLng);   // CH95 bzw. WGS84
-    var k=sampleAt(idx,selLatLng),sw=document.getElementById('pcsw'),val=document.getElementById('pcval');
-    if(k===undefined){sw.style.background='transparent';sw.style.borderColor='transparent';val.textContent='—';}
-    else if(k===-1){sw.style.background='transparent';sw.style.borderColor='transparent';val.textContent='—';}
-    else if(k===null){sw.style.background='transparent';sw.style.borderColor='rgba(0,0,0,.15)';val.textContent='kein Niederschlag';}
-    else{var c=SCALE_JS[k][1];sw.style.background='rgb('+c[0]+','+c[1]+','+c[2]+')';sw.style.borderColor='rgba(0,0,0,.15)';val.textContent=rangeText(k);}
   }
   map.on('click',function(e){ map.panTo(e.latlng); });          // auf den getippten Punkt zentrieren; Mitte = Fadenkreuz
 
