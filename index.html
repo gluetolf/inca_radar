@@ -47,26 +47,38 @@
   .peak-txt{position:absolute;left:7px;top:-12px;font-family:'Montserrat',-apple-system,"Segoe UI",Roboto,sans-serif;font-weight:500;font-size:11px;color:#adb2ba;text-shadow:0 0 2px #fff,0 0 2px #fff,0 0 3px #fff;transform:rotate(-18deg);transform-origin:left bottom}
   .peak-flip .peak-txt{left:auto;right:7px;transform:rotate(-18deg);transform-origin:right bottom;text-align:right}
   .peak-txt b{font-weight:400;color:#bdc1c8}
-  .topbar{position:absolute;top:0;left:0;right:0;z-index:500;display:flex;align-items:center;gap:12px;padding:12px 16px;pointer-events:none}
-  .brand{pointer-events:auto;background:var(--panel);backdrop-filter:blur(8px);border:1px solid var(--panel-line);
-    border-radius:var(--radius);box-shadow:var(--shadow);padding:9px 14px;display:flex;align-items:center;gap:11px}
-  .brand .mark{width:10px;height:26px;border-radius:3px;background:var(--green);flex:none}
-  .brand h1{font-size:15px;margin:0;line-height:1.15;font-weight:700;letter-spacing:.2px}
-  .brand .sub{font-size:11px;color:var(--muted);margin-top:1px}
-  .brand .sub-m{display:none}
-  /* Handy (nicht iPad): Titelbox kompakt, unten im Dock direkt ueber der Zeitleiste */
-  body.phone .brand h1,body.phone .brand .sub{display:none}
-  body.phone .brand .sub-m{display:block;font-size:12px;font-weight:600;letter-spacing:.2px}
-  body.phone .brand{padding:6px 12px;gap:8px}
-  body.phone .brand .mark{height:15px;width:8px}
-  body.phone .dock{flex-direction:column;align-items:center;gap:8px}
-  .status{pointer-events:auto;margin-left:auto;background:var(--panel);backdrop-filter:blur(8px);border:1px solid var(--panel-line);
-    border-radius:999px;box-shadow:var(--shadow);padding:7px 13px;font-size:12px;color:var(--muted);display:flex;align-items:center;gap:7px}
-  .status .live{width:8px;height:8px;border-radius:50%;background:var(--green)}
-  .map-tools{position:absolute;top:62px;right:16px;z-index:500;display:flex;flex-direction:column;gap:8px}
-  .map-tools button{width:40px;height:40px;border-radius:11px;border:1px solid var(--panel-line);background:var(--panel);
-    backdrop-filter:blur(8px);box-shadow:var(--shadow);cursor:pointer;font-size:16px;color:var(--ink);display:grid;place-items:center}
-  .map-tools button:active{transform:scale(.94)}.map-tools button.on{background:var(--green);color:#fff;border-color:var(--green)}
+  /* EigerMaker-Wasserzeichen oben rechts - Deckkraft 0.42 wie in der Teilen-Vorschau */
+  #wm{position:absolute;right:16px;top:14px;height:48px;width:auto;z-index:450;
+      opacity:.42;pointer-events:none;filter:drop-shadow(0 1px 1px rgba(255,255,255,.5))}
+  body.phone #wm{height:38px;right:12px;top:12px}
+  /* Dock-Kopfzeile: Ort + Lupe (Suche) links zusammen, Standort/Reload rechts */
+  .dockhead{display:flex;align-items:center;gap:10px;margin-bottom:11px}
+  .dockhead .ort{display:flex;align-items:center;gap:8px;font-size:16px;font-weight:700;color:var(--ink);min-width:0}
+  .dockhead .ort #ortname{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .dockhead .live{width:8px;height:8px;border-radius:50%;background:var(--green);flex:none}
+  .dockhead .toolgrp{margin-left:auto;display:flex;gap:8px}
+  .dockhead button{width:38px;height:38px;border-radius:10px;border:1px solid var(--panel-line);background:rgba(255,255,255,.7);
+    cursor:pointer;font-size:15px;color:var(--ink);display:grid;place-items:center;flex:none}
+  .dockhead button:active{transform:scale(.94)}
+  .dockhead .lupe.on{background:var(--green);color:#fff;border-color:var(--green)}
+  /* Fusszeile: Stand + Quellen-Link */
+  .dockfoot{display:flex;align-items:center;justify-content:center;gap:7px;margin-top:11px;
+    font-size:11px;color:var(--muted);flex-wrap:wrap}
+  .dockfoot .live{width:7px;height:7px;border-radius:50%;background:var(--green);flex:none}
+  .dockfoot .footsep{opacity:.5}
+  .liclink{background:none;border:none;color:var(--muted);cursor:pointer;font-size:11px;padding:0;text-decoration:underline;font-family:inherit}
+  .liclink:hover{color:var(--ink)}
+  /* Lizenz-Box */
+  .licbox{position:absolute;inset:0;z-index:1200;display:none;align-items:center;justify-content:center;
+    background:rgba(0,0,0,.34);backdrop-filter:blur(2px);padding:20px}
+  .licbox.open{display:flex}
+  .licinner{background:#fff;border-radius:16px;box-shadow:0 10px 40px rgba(0,0,0,.3);max-width:440px;width:100%;
+    padding:20px 22px;font-size:13px;color:var(--ink);line-height:1.5;max-height:86vh;overflow:auto}
+  .lichead{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;font-size:15px}
+  .lichead button{background:none;border:none;font-size:18px;cursor:pointer;color:var(--muted);padding:0 4px}
+  .licinner p{margin:8px 0}
+  .licinner a{color:var(--green-dark);text-decoration:underline}
+  .licnote{font-size:11px;color:var(--muted);margin-top:14px !important;border-top:1px solid var(--panel-line);padding-top:12px}
   .dock{position:absolute;left:0;right:0;bottom:0;z-index:500;padding:0 14px 14px;display:flex;justify-content:center}
   .panel{width:100%;max-width:780px;background:var(--panel);backdrop-filter:blur(10px);border:1px solid var(--panel-line);
     border-radius:18px;box-shadow:var(--shadow);padding:12px 16px 14px}
@@ -108,7 +120,7 @@
   .pointchip .pc-val{font-weight:700}
   .pointchip .pc-sw{width:12px;height:12px;border-radius:3px;border:1px solid rgba(0,0,0,.15);flex:none}
   .pointchip .pc-coord{font-size:11px;color:var(--muted);letter-spacing:.2px;font-variant-numeric:tabular-nums}
-  .searchbox{position:absolute;top:12px;left:50%;transform:translateX(-50%);z-index:600;display:none;width:min(340px,92vw)}
+  .searchbox{position:absolute;bottom:210px;left:50%;transform:translateX(-50%);z-index:600;display:none;width:min(340px,92vw)}
   .searchbox input{width:100%;box-sizing:border-box;padding:10px 14px;border-radius:12px;border:1px solid var(--panel-line);
     background:var(--panel);backdrop-filter:blur(8px);box-shadow:var(--shadow);color:var(--ink);font-size:14px;outline:none}
   .search-results{margin-top:6px;background:var(--panel);backdrop-filter:blur(8px);border:1px solid var(--panel-line);
@@ -139,28 +151,15 @@
   .errbox{max-width:380px;text-align:center;line-height:1.5}
   .spinner{width:34px;height:34px;border:3px solid #c3ccb6;border-top-color:var(--green);border-radius:50%;animation:spin .8s linear infinite;margin:0 auto 12px}
   @keyframes spin{to{transform:rotate(360deg)}}
-  @media (max-width:560px){.brand h1{font-size:13px}.brand .sub{display:none}.bigtime{font-size:17px}.map-tools{top:58px}
-    .row{flex-wrap:wrap}
-    .speed{flex-basis:100%;justify-content:center;margin-top:6px}
-    .speed button{padding:6px 12px;font-size:12px}}
+  @media (max-width:560px){.bigtime{font-size:18px}
+    .speed{display:none}
+    .dockhead .ort{font-size:15px}}
 </style>
 </head>
 <body>
 <div id="map"></div>
+<img id="wm" src="logo.png" alt="EigerMaker">
 <div class="crosshair" id="crosshair"></div>
-<div class="topbar">
-  <div class="brand"><span class="mark"></span>
-    <div><h1>Niederschlagsradar</h1><div class="sub">Radar &amp; Prognose · MeteoSchweiz, DWD, Météo-France</div>
-    <div class="sub-m">Niederschlag Radar &amp; Prognose</div></div>
-  </div>
-  <div class="status"><span class="live"></span><span id="updated">lädt…</span></div>
-</div>
-<div class="map-tools">
-  <button id="searchBtn" title="Ort suchen">🔍</button>
-  <button id="refreshBtn" title="Neu laden (neueste Version)">⟳</button>
-  <button id="darkBtn" title="Hell/Dunkel">◐</button>
-  <button id="homeBtn" title="Auf meinen Standort zentrieren">⌖</button>
-</div>
 <div class="searchbox" id="searchbox">
   <input id="searchInput" type="text" placeholder="Ort suchen…" autocomplete="off" spellcheck="false">
   <div class="search-results" id="searchResults"></div>
@@ -170,11 +169,29 @@
   <div class="pc-coord" id="pccoord"></div>
 </div>
 <div class="toast" id="toast"></div>
+<div class="licbox" id="licbox">
+  <div class="licinner">
+    <div class="lichead"><b>Datenquellen &amp; Lizenzen</b><button id="licClose" aria-label="Schließen">✕</button></div>
+    <p>Radar &amp; Kurzfrist­modell ICON-CH1: <a href="https://www.meteoschweiz.admin.ch" target="_blank" rel="noopener">Quelle: MeteoSchweiz</a> — <a href="https://opendatadocs.meteoswiss.ch/de/general/terms-of-use" target="_blank" rel="noopener">CC BY 4.0</a>.</p>
+    <p>Modell ICON-D2: <a href="https://www.dwd.de/DE/leistungen/opendata/opendata.html" target="_blank" rel="noopener">Quelle: Deutscher Wetterdienst (DWD)</a> — <a href="https://www.dwd.de/DE/service/rechtliche_hinweise/rechtliche_hinweise_node.html" target="_blank" rel="noopener">GeoNutzV / CC BY 4.0</a>.</p>
+    <p>Modell AROME: <a href="https://donneespubliques.meteofrance.fr" target="_blank" rel="noopener">Quelle: Météo-France</a> — <a href="https://www.etalab.gouv.fr/licence-ouverte-open-licence" target="_blank" rel="noopener">Licence Ouverte (Etalab)</a>.</p>
+    <p>Kartendaten: Grenzen, Seen &amp; Flüsse aus <a href="https://www.naturalearthdata.com" target="_blank" rel="noopener">Natural Earth</a> (Public Domain); Orte aus <a href="https://www.geonames.org" target="_blank" rel="noopener">GeoNames</a> (CC BY 4.0).</p>
+    <p class="licnote">Die Datenquellen unterstützen diesen Dienst nicht und stehen in keiner Verbindung zu ihm.</p>
+  </div>
+</div>
 <div class="dock"><div class="panel">
+  <div class="dockhead">
+    <span class="ort" id="orthead"><span class="live" id="livedot"></span><span id="ortname">Schweiz</span></span>
+    <button class="lupe" id="searchBtn" title="Ort suchen">🔍</button>
+    <div class="toolgrp">
+      <button id="homeBtn" title="Auf meinen Standort zentrieren">⌖</button>
+      <button id="refreshBtn" title="Neu laden (neueste Version)">⟳</button>
+    </div>
+  </div>
   <div class="row">
     <button class="play" id="play" aria-label="Abspielen">▶</button>
     <div class="timewrap">
-      <div class="timehead"><span class="bigtime" id="bigtime">--:--</span><span class="tag now" id="tag">Jetzt</span></div>
+      <div class="timehead"><span class="bigtime" id="bigtime">--:--</span></div>
       <div class="track"><div class="ticks" id="ticks"></div><div class="nowline" id="nowline"></div>
         <input type="range" id="slider" min="0" max="0" value="0" step="1" aria-label="Zeit wählen"></div>
     </div>
@@ -185,6 +202,11 @@
     <div class="scalehead"><span>Niederschlagsintensität</span><span id="hailLegend" style="display:none"><i class="hailsw"></i>Hagel</span><span>mm/h</span></div>
     <div class="scalebar"></div>
     <div class="scalelabels"><span>0.3</span><span>1</span><span>5</span><span>20</span><span>50+</span></div>
+  </div>
+  <div class="dockfoot">
+    <span class="live" id="livefoot"></span><span id="updated">lädt…</span>
+    <span class="footsep">·</span>
+    <button class="liclink" id="licLink">ⓘ Datenquellen</button>
   </div>
 </div></div>
 <div class="loading" id="loading"><div class="errbox" id="loadtext"><div class="spinner"></div>Daten werden geladen…</div></div>
@@ -256,7 +278,6 @@
   }
   map.attributionControl.setPrefix(false);
   var LIGHT="https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png";
-  var DARK ="https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png";
   var base=L.tileLayer(LIGHT,{attribution:'© OpenStreetMap, © CARTO · Daten: MeteoSchweiz, DWD, Météo-France',maxZoom:19}).addTo(map);
   // Hintergrund-Label-Ebene: zwischen Basiskarte (tilePane 200) und Niederschlag (overlayPane 400).
   // Enthaelt Seen- UND Gipfel-Labels -> beide wirken wie Teil der Karte, der Niederschlag liegt darueber.
@@ -270,12 +291,6 @@
   var _rect=[[43.6,2.6],[43.6,12.5],[49.5,12.5],[49.5,2.6]];
   var veil=L.polygon([_world,_rect],{pane:'veil',stroke:false,fillColor:'#252e38',fillOpacity:0.16,interactive:false}).addTo(map);
   var veilEdge=L.polygon(_rect,{pane:'veil',fill:false,color:'#7d8892',weight:1,dashArray:'5 5',opacity:0.55,interactive:false}).addTo(map);
-  var dark=false;
-  document.getElementById('darkBtn').onclick=function(){dark=!dark;
-    base.setUrl(dark?DARK:LIGHT); this.classList.toggle('on',dark);
-    veil.setStyle({fillColor:dark?'#000000':'#252e38',fillOpacity:dark?0.42:0.16});
-    veilEdge.setStyle({color:dark?'#5a646e':'#7d8892'});
-    document.body.style.background=dark?'#10140c':'#dfe5d8';document.getElementById('map').style.background=dark?'#10140c':'#dfe5d8';};
   // ---- Hinweis-Balken (Toast) ----
   function toast(html, ms){
     var t=document.getElementById('toast'); if(!t)return;
@@ -558,8 +573,8 @@
     idx=i;document.getElementById('slider').value=i;      // Zustand/Zeit/Slider sofort setzen
     var _d=new Date(frames[i].time);
     document.getElementById('bigtime').textContent=dayLabel(_d)+' '+hm(_d);
-    var L1=label(frames[i]),tag=document.getElementById('tag');
-    tag.textContent=L1.txt;tag.className='tag '+L1.cls;
+    var tag=document.getElementById('tag');
+    if(tag){var L1=label(frames[i]);tag.textContent=L1.txt;tag.className='tag '+L1.cls;}
     document.querySelectorAll('.tick').forEach(function(t,j){t.classList.toggle('active',j===i)});
     if(frames[i+1])imgOf(i+1);if(frames[i-1])imgOf(i-1);  // Nachbarn vorladen
     whenReady(i,function(){                                // Bild erst einblenden, wenn geladen -> altes bleibt bis dahin sichtbar
@@ -649,7 +664,7 @@
   var buildMs = 0, frameCount = 0;
   function updateStamp(){
     var el = document.getElementById('updated'); if(!el) return;
-    var dot = document.querySelector('.status .live');
+    var dot = document.getElementById('livefoot');
     if(!nowMs){el.textContent='lädt…';return;}
     var ageMin = Math.max(0, Math.round((Date.now() - nowMs) / 60000));
     if(ageMin > 20){                                  // Quelle haengt -> ehrlich benennen statt still alt anzeigen
@@ -725,6 +740,7 @@
     var loc='';                                              // Ortsname = exakte Rueckwaerts-Geokodierung des Punkts
     if(rgeo.key===keyFor(selLatLng)){ loc = rgeo.name || (rgeo.pending?'…':''); }
     document.getElementById('pcloc').textContent = loc ? loc+' ·' : '';
+    var oh=document.getElementById('ortname'); if(oh) oh.textContent = loc || 'Schweiz';
     document.getElementById('pccoord').textContent = coordText(selLatLng);   // CH95 bzw. WGS84
     var k=sampleAt(idx,selLatLng),sw=document.getElementById('pcsw'),val=document.getElementById('pcval');
     if(k===undefined){sw.style.background='transparent';sw.style.borderColor='transparent';val.textContent='—';}
@@ -770,12 +786,15 @@
     else hailLayer.setOpacity(0);
   }
 
-  // Handy (schmaler Bildschirm, nicht iPad): Titelbox unten ins Dock verschieben,
-  // direkt oberhalb der Zeitleiste. Credits stehen bereits in der Fusszeile.
+  // Lizenz-/Datenquellen-Box
+  var LICBOX=document.getElementById('licbox');
+  document.getElementById('licLink').onclick=function(){LICBOX.classList.add('open');};
+  document.getElementById('licClose').onclick=function(){LICBOX.classList.remove('open');};
+  LICBOX.onclick=function(e){ if(e.target===LICBOX) LICBOX.classList.remove('open'); };
+
+  // Handy (schmaler Bildschirm): nur die phone-Klasse setzen (Layout regelt das CSS)
   if(window.matchMedia && window.matchMedia('(max-width:520px)').matches){
     document.body.classList.add('phone');
-    var _dk=document.querySelector('.dock'), _br=document.querySelector('.brand');
-    if(_dk && _br) _dk.insertBefore(_br, _dk.firstChild);
   }
 
 })();

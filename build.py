@@ -115,18 +115,17 @@ def _make_share_preview(radar_png, when, out_path):
         stand = when.strftime("%d.%m.%y %H:%M UTC")
     ov = Image.new("RGBA", (W, H), (0, 0, 0, 0))
     od = ImageDraw.Draw(ov)
-    # Marken-Karte oben links
-    l1, l2, l3 = "Niederschlagsradar", "Schweiz", "Stand " + stand
-    w1 = od.textlength(l1, font=fB); w2 = od.textlength(l2, font=fH); w3 = od.textlength(l3, font=fS)
-    cw = int(max(w1 + 46, w2, w3)) + 56
+    # Marken-Karte oben links (Standard-Vorschau = ganze Schweiz, ohne Ort -> kompakt)
+    l1, l3 = "Niederschlagsradar", "Stand " + stand
+    w1 = od.textlength(l1, font=fB); w3 = od.textlength(l3, font=fS)
+    cw = int(max(w1 + 46, w3)) + 56
     try:
-        od.rounded_rectangle([24, 24, 24 + cw, 24 + 150], radius=18, fill=(255, 255, 255, 235))
+        od.rounded_rectangle([24, 24, 24 + cw, 24 + 96], radius=18, fill=(255, 255, 255, 235))
     except Exception:
-        od.rectangle([24, 24, 24 + cw, 24 + 150], fill=(255, 255, 255, 235))
+        od.rectangle([24, 24, 24 + cw, 24 + 96], fill=(255, 255, 255, 235))
     od.ellipse([50, 46, 72, 68], fill=(52, 168, 83, 255))
     od.text((84, 44), l1, font=fB, fill=(40, 46, 38, 255))
-    od.text((52, 82), l2, font=fH, fill=(24, 30, 22, 255))
-    od.text((52, 138), l3, font=fS, fill=(120, 128, 118, 255))
+    od.text((52, 82), l3, font=fS, fill=(120, 128, 118, 255))
     # CTA-Button unten rechts
     ct = "Radar live ansehen  ▶"
     cwid = int(od.textlength(ct, font=fC))

@@ -158,7 +158,9 @@ foreach (array_merge($places, loadArr('places.js','PLACES')) as $p) {
     $d = ($p[1]-$lat)*($p[1]-$lat) + ($p[2]-$lng)*$co*($p[2]-$lng)*$co;
     if ($d < $bd) { $bd = $d; $near = $p[0]; }
 }
-$ort = ($near !== null && $bd < 0.01) ? $near : "Schweiz";
+// Ortsname anzeigen, sobald ein Ort in ~15 km Naehe liegt - funktioniert auch im
+// Ausland (FCITIES). Ist weit und breit keiner (bd zu gross), bleibt die Headline leer.
+$ort = ($near !== null && $bd < 0.02) ? $near : null;
 $stand = '';
 $sf = @stat(__DIR__ . '/radar_full.png');
 if ($sf) { $dtz = new DateTime('@' . $sf['mtime']); $dtz->setTimezone(new DateTimeZone('Europe/Zurich'));
@@ -171,14 +173,17 @@ if (is_file($FONTB) && is_file($FONT)) {
     $green  = imagecolorallocate($out, 52, 168, 83);
     $white  = imagecolorallocate($out, 255, 255, 255);
     $b1 = imagettfbbox(26, 0, $FONTB, "Niederschlagsradar");
-    $b2 = imagettfbbox(44, 0, $FONTB, $ort);
+    $b2 = $ort ? imagettfbbox(44, 0, $FONTB, $ort) : array(0,0,0,0);
     $b3 = $stand ? imagettfbbox(20, 0, $FONT, $stand) : array(0,0,0,0);
     $cw = (int)max(($b1[2]-$b1[0]) + 46, $b2[2]-$b2[0], $b3[2]-$b3[0]) + 56;
-    roundRect($out, 24, 24, 24 + $cw, 174, 18, $cardBg);
+    // Ohne Ort: kompakte Karte (nur Marke + Stand). Mit Ort: volle Hoehe mit Headline.
+    $ch = $ort ? 174 : 96;
+    $sy = $ort ? 158 : 82;
+    roundRect($out, 24, 24, 24 + $cw, $ch, 18, $cardBg);
     imagefilledellipse($out, 61, 57, 22, 22, $green);
     imagettftext($out, 26, 0, 84, 66, $brandc, $FONTB, "Niederschlagsradar");
-    imagettftext($out, 44, 0, 52, 124, $dark, $FONTB, $ort);
-    if ($stand) imagettftext($out, 20, 0, 52, 158, $grey, $FONT, $stand);
+    if ($ort) imagettftext($out, 44, 0, 52, 124, $dark, $FONTB, $ort);
+    if ($stand) imagettftext($out, 20, 0, 52, $sy, $grey, $FONT, $stand);
     $ct = "Radar live ansehen  >";
     $bc = imagettfbbox(24, 0, $FONTB, $ct);
     $cwid = $bc[2]-$bc[0];

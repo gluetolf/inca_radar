@@ -26,7 +26,7 @@ if (isset($_GET['c']) && preg_match('~^(\d+(?:\.\d+)?)/(-?\d+(?:\.\d+)?)/(-?\d+(
             }
         }
     }
-    $ort = ($near !== null && $bd < 0.01) ? $near : null;      // ~10 km Umkreis
+    $ort = ($near !== null && $bd < 0.02) ? $near : null;      // ~15 km, auch Ausland (FCITIES)
 
     $title = $ort ? "Niederschlagsradar – " . $ort : "Niederschlagsradar Schweiz – Radar & Prognose";
     $desc  = $ort ? "Aktueller Niederschlag bei " . $ort . " – Live-Radar mit Kurzfrist-Prognose (MeteoSchweiz, DWD, Météo-France)."
