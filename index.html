@@ -308,10 +308,19 @@
   function writeState(){var c=crosshairLatLng();
     history.replaceState(null,'',location.pathname+'?c='+map.getZoom()+'/'+c.lat.toFixed(5)+'/'+c.lng.toFixed(5));}
   var _hp=parseState();
-  if(_hp){ setViewAtCrosshair([_hp.lat,_hp.lng],Math.min(13,Math.max(6,_hp.z)),{animate:false}); }
+  // Startansicht (Permalink ODER Standort) erst setzen, wenn die Box ihre Endhoehe hat -
+  // sonst ist mapOffsetY() zu klein und die Mitte sitzt ein paar Pixel zu hoch.
+  var _afterLayout=function(fn){
+    var ready=(document.fonts&&document.fonts.ready)?document.fonts.ready:Promise.resolve();
+    ready.then(function(){ requestAnimationFrame(function(){ requestAnimationFrame(fn); }); });
+  };
+  if(_hp){
+    map.setView([_hp.lat,_hp.lng],Math.min(13,Math.max(6,_hp.z)),{animate:false});   // grob sofort
+    _afterLayout(function(){ placeCrosshair(); setViewAtCrosshair([_hp.lat,_hp.lng],Math.min(13,Math.max(6,_hp.z)),{animate:false}); });
+  }
   else if(navigator.geolocation){            // keine Position in der URL -> direkt auf den Standort zoomen
     navigator.geolocation.getCurrentPosition(function(pos){
-      setViewAtCrosshair([pos.coords.latitude,pos.coords.longitude],11);
+      _afterLayout(function(){ placeCrosshair(); setViewAtCrosshair([pos.coords.latitude,pos.coords.longitude],11); });
     }, function(){}, {timeout:8000,maximumAge:600000});
   }
   map.on('moveend',writeState); writeState();
