@@ -32,10 +32,7 @@
   *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
   html,body{height:100%;margin:0}
   body{overflow:hidden;background:#dfe5d8;color:var(--ink)}
-  #map{position:absolute;top:0;left:0;right:0;bottom:0;background:#dfe5d8;z-index:0}
-  /* Karten-Container ragt unten ueber den Fensterrand (Fadenkreuz-Trick) - die unten
-     verankerten Leaflet-Controls entsprechend wieder ins sichtbare Fenster heben. */
-  .leaflet-bottom{bottom:var(--ctllift,0)}
+  #map{position:absolute;inset:0;background:#dfe5d8;z-index:0}
   .city-label{background:none;border:none;box-shadow:none;font-family:'Montserrat',-apple-system,"Segoe UI",Roboto,sans-serif;font-weight:600;font-size:12px;color:#54585c;
     text-shadow:0 0 3px #fff,0 0 3px #fff,0 0 6px #fff;white-space:nowrap;pointer-events:auto;cursor:pointer}
   .lake-label{background:none;border:none;box-shadow:none;font-family:'Montserrat',-apple-system,"Segoe UI",Roboto,sans-serif;font-style:italic;font-weight:500;font-size:11px;
@@ -227,7 +224,7 @@
   // ---- Karte + Hintergrund (hell/dunkel) ----
   var SWISS=[46.83,8.23], Z=8;                 // Standard-Zentrum/Zoom (Schweiz)
   var map=L.map('map',{center:SWISS,zoom:Z,minZoom:6,maxZoom:13,zoomControl:false,
-    scrollWheelZoom:'center',doubleClickZoom:'center',touchZoom:'center'}).setView(SWISS,Z);
+    scrollWheelZoom:false,doubleClickZoom:false,touchZoom:'center'}).setView(SWISS,Z);
   L.control.zoom({position:'bottomright'}).addTo(map);
   // Standort-Button als eigene Karten-Control DIREKT ueber den Zoom-Buttons (bottomright),
   // damit Standort/+/- konsistent gestapelt sind (wie bei gaengigen Kartendiensten).
@@ -240,30 +237,49 @@
     }});
   map.addControl(new LocCtl());
 
-  // ---- Fadenkreuz-Offset ueber den KARTEN-CONTAINER geloest (robust, kein eigener Zoom-Code):
-  //      Die Box unten verdeckt den unteren Kartenteil. Damit die Karten-Mitte (um die Leaflet
-  //      IMMER zoomt) genau am Fadenkreuz in der Mitte des FREIEN Bereichs liegt, ziehen wir den
-  //      #map-Container unten um 2*offset ueber den Fensterrand hinaus. Dann ist die Container-Mitte
-  //      exakt dort, wo das Fadenkreuz sitzt - Zoom (Wheel/Pinch/Buttons) trifft automatisch die Mitte,
-  //      ohne Nachrucken, ohne Sonderfaelle. ----
-  var mapEl=document.getElementById('map');
-  function boxH(){ var p=document.querySelector('.panel'); return (p?p.getBoundingClientRect().height:0)+14; }
-  function mapOffsetY(){ return Math.round(boxH()/2); }        // Fadenkreuz so weit ueber Fenstermitte
-  function syncMapContainer(){                                  // Container unten verlaengern + Leaflet informieren
-    var extra=2*mapOffsetY();
-    if(mapEl.style.bottom!==(-extra)+'px'){
-      mapEl.style.bottom=(-extra)+'px';
-      // Leaflet-Controls kleben am (jetzt tieferen) Container-Rand -> um 'extra' wieder hochholen,
-      // damit Zoom/Standort/Attribution im sichtbaren Fenster bleiben.
-      document.documentElement.style.setProperty('--ctllift', extra+'px');
-      map.invalidateSize({pan:false});
-    }
+  // ---- Fadenkreuz-Offset: die Box unten verdeckt den unteren Kartenteil. Damit der Suedteil
+  //      sichtbar bleibt, liegt das Fadenkreuz (= "Mitte") in der Mitte des FREIEN Bereichs,
+  //      also (Fensterhoehe - Boxhoehe)/2 statt in der Fenstermitte. Alle "Mitte"-Bezuege
+  //      (Ortsname, Permalink, Sampling, Hinspringen) gehen ueber diese zwei Helfer. ----
+  function mapOffsetY(){                          // wie weit die optische Mitte ueber der Fenstermitte liegt (px)
+    var p=document.querySelector('.panel');
+    var h=p?p.getBoundingClientRect().height:0;
+    var pad=14;                                   // Dock-Abstand unten
+    return Math.round((h+pad)/2);
   }
-  function placeCrosshair(){ var ch=document.getElementById('crosshair'); if(ch) ch.style.top='calc(50% - '+mapOffsetY()+'px)'; }
-  // "Mitte" ist jetzt schlicht die Karten-Mitte (= Fadenkreuz dank Container-Trick)
-  function crosshairLatLng(){ return map.getCenter(); }
-  function setViewAtCrosshair(ll, zoom, opts){ map.setView(ll, (zoom==null?map.getZoom():zoom), opts); }
-  window.addEventListener('resize',function(){ syncMapContainer(); placeCrosshair(); if(typeof refreshCenter==='function') refreshCenter(); });
+  function crosshairLatLng(){                      // lat/lng am Fadenkreuz (nicht Fenstermitte)
+    var sz=map.getSize();
+    return map.containerPointToLatLng([sz.x/2, sz.y/2 - mapOffsetY()]);
+  }
+  function setViewAtCrosshair(ll, zoom, opts){    // bringt einen Ort ans Fadenkreuz (statt Fenstermitte)
+    zoom=(zoom==null?map.getZoom():zoom);
+    var pt=map.project(ll, zoom).add([0, mapOffsetY()]);   // Ziel nach unten schieben -> landet am Fadenkreuz
+    map.setView(map.unproject(pt, zoom), zoom, opts);
+  }
+  // Fadenkreuz-Symbol vertikal auf die Mitte des freien Bereichs setzen
+  function placeCrosshair(){
+    var ch=document.getElementById('crosshair'); if(!ch)return;
+    ch.style.top='calc(50% - '+mapOffsetY()+'px)';
+  }
+  // Bei Groessen-/Orientierungswechsel: Fadenkreuz neu positionieren, Mitte neu erfassen
+  window.addEventListener('resize',function(){ placeCrosshair(); if(typeof refreshCenter==='function') refreshCenter(); });
+  // Zoom immer um das Fadenkreuz (Mitte des freien Bereichs). setZoomAround verschiebt in EINEM
+  // Schritt so, dass der Punkt unterm Fadenkreuz fest bleibt - kein Nachrucken wie bei zoomend-Korrektur.
+  function crosshairPt(){ return L.point(map.getSize().x/2, map.getSize().y/2 - mapOffsetY()); }
+  function zoomAtCrosshair(delta){
+    var t=Math.max(6, Math.min(13, map.getZoom()+delta));
+    if(t!==map.getZoom()) map.setZoomAround(crosshairPt(), t);
+  }
+  // Scrollrad: eigene, gebuendelte Behandlung (Leaflet-Wheel ist aus)
+  var _wheelAcc=0,_wheelTimer=null;
+  L.DomEvent.on(map.getContainer(),'wheel',function(e){
+    L.DomEvent.preventDefault(e);
+    _wheelAcc += (e.deltaY<0?1:-1);
+    if(_wheelTimer) return;
+    _wheelTimer=setTimeout(function(){ var d=_wheelAcc; _wheelAcc=0; _wheelTimer=null; if(d) zoomAtCrosshair(d>0?1:-1); },55);
+  });
+  // Doppelklick: einen Schritt rein, ums Fadenkreuz
+  map.on('dblclick',function(e){ L.DomEvent.stop(e); zoomAtCrosshair(1); });
 
   // ---- Position in der URL (?c=zoom/lat/lng): teilbar & beim Aufruf direkt anspringen ----
   // Query statt Hash, damit auch der SERVER den Ausschnitt sieht (ausschnittsgenaues
@@ -275,24 +291,12 @@
   function writeState(){var c=crosshairLatLng();
     history.replaceState(null,'',location.pathname+'?c='+map.getZoom()+'/'+c.lat.toFixed(5)+'/'+c.lng.toFixed(5));}
   var _hp=parseState();
-  // Container an die Box-Hoehe anpassen (Fadenkreuz = Karten-Mitte), dann Ansicht setzen.
-  // Zweistufig, weil die Box beim allerersten Frame noch keine Hoehe hat.
-  function applyStartView(){
-    syncMapContainer(); placeCrosshair();
-    if(_hp){ map.setView([_hp.lat,_hp.lng],Math.min(13,Math.max(6,_hp.z)),{animate:false}); }
+  if(_hp){ setViewAtCrosshair([_hp.lat,_hp.lng],Math.min(13,Math.max(6,_hp.z)),{animate:false}); }
+  else if(navigator.geolocation){            // keine Position in der URL -> direkt auf den Standort zoomen
+    navigator.geolocation.getCurrentPosition(function(pos){
+      setViewAtCrosshair([pos.coords.latitude,pos.coords.longitude],11);
+    }, function(){}, {timeout:8000,maximumAge:600000});
   }
-  if(_hp){
-    map.setView([_hp.lat,_hp.lng],Math.min(13,Math.max(6,_hp.z)),{animate:false});  // grob (Container noch nicht justiert)
-    requestAnimationFrame(function(){ requestAnimationFrame(applyStartView); });      // exakt, sobald Box Hoehe hat
-  } else {
-    requestAnimationFrame(function(){ requestAnimationFrame(function(){ syncMapContainer(); placeCrosshair(); }); });
-    if(navigator.geolocation){                 // keine Position in der URL -> direkt auf den Standort zoomen
-      navigator.geolocation.getCurrentPosition(function(pos){
-        setViewAtCrosshair([pos.coords.latitude,pos.coords.longitude],11);
-      }, function(){}, {timeout:8000,maximumAge:600000});
-    }
-  }
-  if(document.fonts && document.fonts.ready) document.fonts.ready.then(function(){ syncMapContainer(); placeCrosshair(); });
   map.on('moveend',writeState); writeState();
   // Fadenkreuz-Modell: der angezeigte Wert gilt immer fuer den Punkt am Fadenkreuz (Mitte des freien Bereichs).
   function refreshCenter(){ selLatLng=crosshairLatLng(); maybeFetchPlace(selLatLng); updateReadout(); }
@@ -706,7 +710,7 @@
     frameCount = frames.length;
     updateStamp();
     document.getElementById('loading').style.display='none';
-    syncMapContainer(); placeCrosshair();      // Container/Fadenkreuz an die (jetzt gerenderte) Box anpassen
+    placeCrosshair();                          // Fadenkreuz auf die Mitte des freien Bereichs
     selLatLng=crosshairLatLng();               // Chip zeigt von Anfang an den Punkt am Fadenkreuz
     show(loopStart); if(!playing) play();
   }
