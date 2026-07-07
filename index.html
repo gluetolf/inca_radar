@@ -55,6 +55,7 @@
   .dockhead{display:flex;align-items:center;gap:10px;margin-bottom:11px}
   .dockhead .ort{display:flex;align-items:center;gap:8px;font-size:16px;font-weight:700;color:var(--ink);min-width:0}
   .dockhead .ort #ortname{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .dockhead .ort-search{display:none;font-size:12px;opacity:.5;flex:none}   /* Antippbar-Hinweis am Ort, nur Handy */
   .dockhead .live{width:8px;height:8px;border-radius:50%;background:var(--green);flex:none}
   .dockhead .lupe{margin-left:auto}
   .dockhead .locbtn{display:none}                 /* Standort standardmaessig als Karten-Control (Desktop) */
@@ -64,9 +65,14 @@
   .dockhead .lupe.on,.dockhead .locbtn.on{background:var(--green);color:#fff;border-color:var(--green)}
   /* Standort-Control (Leaflet-Bar) ueber den Zoom-Buttons - nur Desktop */
   .loc-ctl a{font-size:18px;line-height:30px;color:var(--ink)}
-  /* Handy: Zoom-/Standort-Controls weg (Gesten genuegen), Standort in die Box neben die Lupe */
+  /* Handy: Zoom-/Standort-Controls weg (Gesten genuegen), Standort in die Box */
   body.phone .leaflet-control-zoom,body.phone .loc-ctl{display:none}
   body.phone .dockhead .locbtn{display:grid}
+  /* Handy: separate Lupe entfaellt (verwechselbar mit Zoom neben dem Standort) - stattdessen
+     ist der Ortsname selbst antippbar, mit dezentem Such-Icon als Hinweis. */
+  body.phone .dockhead .lupe{display:none}
+  body.phone .dockhead .ort{cursor:pointer;margin-right:auto}
+  body.phone .dockhead .ort-search{display:inline}
   /* Fusszeile: Stand + Quellen-Link */
   /* Leaflet-Attribution: unaufdringlich, Datenquellen-Link erkennbar.
      Standard unten rechts. Auf dem Handy deckt das Dock die untere Zone,
@@ -188,7 +194,7 @@
 </div>
 <div class="dock"><div class="panel">
   <div class="dockhead">
-    <span class="ort" id="orthead"><span class="live" id="livedot"></span><span id="ortname">Schweiz</span></span>
+    <span class="ort" id="orthead"><span class="live" id="livedot"></span><span id="ortname">Schweiz</span><span class="ort-search" aria-hidden="true">🔍</span></span>
     <button class="lupe" id="searchBtn" title="Ort suchen">🔍</button>
     <button class="locbtn" id="homeBtnDock" title="Auf meinen Standort zentrieren">⌖</button>
   </div>
@@ -381,6 +387,7 @@
       toast('Dein Browser unterstützt keine Standortbestimmung.',6000);return;}
     navigator.geolocation.getCurrentPosition(function(pos){
       var ll=L.latLng(pos.coords.latitude,pos.coords.longitude);
+      placeCrosshair();                                  // Offset frisch (falls Box-Hoehe sich aenderte)
       setViewAtCrosshair(ll, Math.max(map.getZoom(),9)); // zentrieren, Zoom nie verkleinern (nur ggf. hinein)
       document.getElementById('toast').style.display='none';
       btn.classList.remove('on');
