@@ -415,14 +415,16 @@
   var CITIES=(window.CITIES&&window.CITIES.length)?window.CITIES:[];   // kuratierte Staedte aus places.js
   if(window.FCITIES&&window.FCITIES.length) CITIES=CITIES.concat(window.FCITIES);  // + Auslandsorte (fplaces.js)
   function onLabelTap(e){ var ll=e.target.getLatLng(); pinned={name:e.target._name, lat:ll.lat, lng:ll.lng}; setViewAtCrosshair(ll, map.getZoom(), {animate:false}); }   // Label antippen -> ans Fadenkreuz + genau diesen Namen anzeigen
-  var cityMarkers=CITIES.map(function(c){
+  var cityMarkers=CITIES.map(function(c,idx){
     // Orte AUSSERHALB des Datenperimeters (nur Kontext, keine Daten) sind nicht antippbar.
     var inBox = c[1]>=43.6 && c[1]<=49.5 && c[2]>=2.6 && c[2]<=12.5;
     var m=L.marker([c[1],c[2]],{interactive:inBox,keyboard:false,icon:L.divIcon({
       className:'city-label'+(inBox?'':' no-tap'),html:'<div class="city-dot"></div>'+c[0],iconSize:[0,0],iconAnchor:[0,0]})});
     m._name=c[0]; if(inBox) m.on('click',onLabelTap);
-    return {mz:c[3],m:m};
+    return {mz:c[3],m:m,i:idx};
   });
+  var _cityOn={}, cityById={};                               // aktive City-Labels + Index->Marker (schnelles Ausblenden)
+  cityMarkers.forEach(function(o){ cityById[o.i]=o.m; });
   // nach Wichtigkeit sortiert (kleinere Zoomschwelle = wichtiger); Anzeige/Entzerrung in updateLabels()
   var citySorted=cityMarkers.slice().sort(function(a,b){return a.mz-b.mz;});
   // ---- Seenamen: eigene Beschriftung (die Hintergrundkarte zeigt in der CH keine Labels) ----
@@ -491,13 +493,23 @@
       return true;
     }
     // 1) feste Stadt-Labels ZUERST (hoechste Prioritaet): nach Wichtigkeit platzieren.
-    citySorted.forEach(function(o){
-      var show=false;
-      if(z>=o.mz){ var pt=map.project(o.m.getLatLng()), w=12+textW(o.m._name,_fPlace);
-        if(box(pt.x,pt.y,w,false)){ box(pt.x,pt.y,w,true); show=true; } }
-      var on=map.hasLayer(o.m);
-      if(show && !on) o.m.addTo(map); else if(!show && on) map.removeLayer(o.m);
-    });
+    //    citySorted ist nach mz aufsteigend sortiert -> sobald mz>z koennen alle folgenden nicht
+    //    mehr sichtbar sein (frueher Abbruch). Aktive Marker werden in _cityOn verfolgt, damit wir
+    //    zum Ausblenden nur ueber die AKTIVEN iterieren statt ueber alle ~7400 (FCITIES).
+    var stillOn={};
+    var sz=map.getSize(), pO=map.getPixelOrigin();          // sichtbarer Pixelbereich (mit etwas Rand)
+    var vminx=pO.x-40, vmaxx=pO.x+sz.x+40, vminy=pO.y-40, vmaxy=pO.y+sz.y+40;
+    for(var ci=0; ci<citySorted.length && citySorted[ci].mz<=z; ci++){
+      var o=citySorted[ci];
+      var pt=map.project(o.m.getLatLng());
+      if(pt.x<vminx||pt.x>vmaxx||pt.y<vminy||pt.y>vmaxy) continue;   // ausserhalb der Ansicht -> ueberspringen
+      var w=12+textW(o.m._name,_fPlace);
+      if(box(pt.x,pt.y,w,false)){ box(pt.x,pt.y,w,true);
+        if(!_cityOn[o.i]){ o.m.addTo(map); _cityOn[o.i]=1; }
+        stillOn[o.i]=1;
+      }
+    }
+    for(var key in _cityOn){ if(!stillOn[key]){ map.removeLayer(cityById[key]); delete _cityOn[key]; } }
     // 2) dynamische Ortslabels - am Desktop erst ab Zoom 12, auf Touch ab 11
     dynMarkers.forEach(function(m){map.removeLayer(m);}); dynMarkers=[];
     if(z >= (touch?11:12)){
