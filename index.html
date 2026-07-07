@@ -252,6 +252,7 @@
     return map.containerPointToLatLng([sz.x/2, sz.y/2 - mapOffsetY()]);
   }
   function setViewAtCrosshair(ll, zoom, opts){    // bringt einen Ort ans Fadenkreuz (statt Fenstermitte)
+    _zoomFocus=null;                              // neuer Ort -> Zoom-Fokus zuruecksetzen
     zoom=(zoom==null?map.getZoom():zoom);
     var pt=map.project(ll, zoom).add([0, mapOffsetY()]);   // Ziel nach unten schieben -> landet am Fadenkreuz
     map.setView(map.unproject(pt, zoom), zoom, opts);
@@ -266,10 +267,20 @@
   // Zoom immer um das Fadenkreuz (Mitte des freien Bereichs). setZoomAround verschiebt in EINEM
   // Schritt so, dass der Punkt unterm Fadenkreuz fest bleibt - kein Nachrucken wie bei zoomend-Korrektur.
   function crosshairPt(){ return L.point(map.getSize().x/2, map.getSize().y/2 - mapOffsetY()); }
+  // Ein Zoom-Fokus (lat/lng), der konstant bleibt, solange nur gezoomt wird. Erst beim manuellen
+  // Verschieben (Drag) wird er neu gesetzt. So bezieht sich jeder Zoomschritt auf denselben
+  // geografischen Punkt -> ueber beliebig viele Rein-/Raus-Zooms KEINE akkumulierte Drift.
+  var _zoomFocus=null;
   function zoomAtCrosshair(delta){
     var t=Math.max(6, Math.min(13, map.getZoom()+delta));
-    if(t!==map.getZoom()) map.setZoomAround(crosshairPt(), t);
+    if(t===map.getZoom()) return;
+    if(!_zoomFocus) _zoomFocus=crosshairLatLng();       // Fokus = aktueller Fadenkreuz-Punkt
+    var half=L.point(map.getSize().x/2, map.getSize().y/2);
+    var chOff=crosshairPt().subtract(half);             // Pixel-Versatz Fadenkreuz -> Fenstermitte
+    var ap=map.project(_zoomFocus, t);                  // konstanter Fokus in Ziel-Zoom-Pixeln
+    map.setView(map.unproject(ap.subtract(chOff), t), t, {animate:false});
   }
+  map.on('dragstart',function(){ _zoomFocus=null; });   // manuelles Verschieben -> Fokus neu bestimmen
   // Scrollrad: eigene, gebuendelte Behandlung (Leaflet-Wheel ist aus)
   var _wheelAcc=0,_wheelTimer=null;
   L.DomEvent.on(map.getContainer(),'wheel',function(e){
