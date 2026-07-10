@@ -924,15 +924,21 @@
   var fsBtn=document.getElementById('fsBtn');
   var fsEl=document.documentElement;
   var canFS = !!(fsEl.requestFullscreen||fsEl.webkitRequestFullscreen);
+  function fsActive(){ return !!(document.fullscreenElement||document.webkitFullscreenElement); }
+  function syncFsIcon(){                                   // Symbol immer am tatsaechlichen Zustand ausrichten
+    if(fsActive()){ fsBtn.textContent='✕'; fsBtn.title='Vollbild verlassen'; }
+    else { fsBtn.textContent='⛶'; fsBtn.title='Vollbild'; }
+  }
   if(canFS && !isStandalone){
     fsBtn.classList.add('show');
     fsBtn.onclick=function(){
-      if(document.fullscreenElement||document.webkitFullscreenElement){
-        (document.exitFullscreen||document.webkitExitFullscreen).call(document);
-      } else {
-        (fsEl.requestFullscreen||fsEl.webkitRequestFullscreen).call(fsEl);
-      }
+      if(fsActive()){ (document.exitFullscreen||document.webkitExitFullscreen).call(document); }
+      else { (fsEl.requestFullscreen||fsEl.webkitRequestFullscreen).call(fsEl); }
     };
+    // Symbol bei JEDER Zustandsaenderung nachziehen (auch bei Escape/Zurueck-Geste, nicht nur beim Klick)
+    document.addEventListener('fullscreenchange', syncFsIcon);
+    document.addEventListener('webkitfullscreenchange', syncFsIcon);
+    syncFsIcon();
   }
 
   // Installations-Hinweis: nur Handy/Tablet, nur im Browser (nicht als App), nur wenn nicht weggeklickt.
