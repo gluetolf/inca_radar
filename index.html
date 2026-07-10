@@ -73,6 +73,8 @@
   .dockhead .lupe.on,.dockhead .locbtn.on{background:var(--green);color:#fff;border-color:var(--green)}
   /* Standort-Control (Leaflet-Bar) ueber den Zoom-Buttons - nur Desktop */
   .loc-ctl a{font-size:18px;line-height:30px;color:var(--ink)}
+  /* Controls ggf. ueber die Box heben (schmale Tablets, iPad Hochformat) - siehe liftControls() */
+  .leaflet-bottom{bottom:var(--ctllift,0)}
   /* Handy: Zoom-/Standort-Controls weg (Gesten genuegen), Standort in die Box */
   body.phone .leaflet-control-zoom,body.phone .loc-ctl{display:none}
   body.phone .dockhead .locbtn{display:grid}
@@ -295,8 +297,23 @@
     var ch=document.getElementById('crosshair'); if(!ch)return;
     ch.style.top='calc(50% - '+mapOffsetY()+'px)';
   }
-  // Bei Groessen-/Orientierungswechsel: Fadenkreuz neu positionieren, Mitte neu erfassen
-  window.addEventListener('resize',function(){ placeCrosshair(); if(typeof refreshCenter==='function') refreshCenter(); });
+  // Karten-Controls (Zoom/Standort/Attribution) sitzen unten rechts. Auf schmalen, aber nicht
+  // "phone"-Geraeten (z.B. iPad Hochformat) reicht die Box fast ueber die ganze Breite und
+  // verdeckt sie -> dann die unten verankerten Controls ueber die Box heben.
+  function liftControls(){
+    if(document.body.classList.contains('phone')) return;    // Handy: Controls ohnehin ausgeblendet
+    var panel=document.querySelector('.panel'); if(!panel) return;
+    var pr=panel.getBoundingClientRect();
+    // Passt eine ~46px breite Control-Spalte rechts NEBEN die Box (mit etwas Luft)?
+    var freeRight = window.innerWidth - pr.right;
+    var lift = (freeRight < 54) ? Math.round(pr.height + 24) : 0;  // sonst ueber die Box heben
+    document.documentElement.style.setProperty('--ctllift', lift+'px');
+  }
+  // Bei Groessen-/Orientierungswechsel: Fadenkreuz neu positionieren, Mitte neu erfassen, Controls anpassen
+  window.addEventListener('resize',function(){ placeCrosshair(); liftControls(); if(typeof refreshCenter==='function') refreshCenter(); });
+  // initial, sobald die Box gerendert ist (unabhaengig vom Daten-Load)
+  requestAnimationFrame(function(){ requestAnimationFrame(liftControls); });
+  if(document.fonts&&document.fonts.ready) document.fonts.ready.then(liftControls);
   // Zoom immer um das Fadenkreuz (Mitte des freien Bereichs). setZoomAround verschiebt in EINEM
   // Schritt so, dass der Punkt unterm Fadenkreuz fest bleibt - kein Nachrucken wie bei zoomend-Korrektur.
   function crosshairPt(){ return L.point(map.getSize().x/2, map.getSize().y/2 - mapOffsetY()); }
@@ -777,6 +794,7 @@
     updateStamp();
     document.getElementById('loading').style.display='none';
     placeCrosshair();                          // Fadenkreuz auf die Mitte des freien Bereichs
+    liftControls();                            // Controls ggf. ueber die Box heben (schmale Tablets)
     selLatLng=crosshairLatLng();               // Chip zeigt von Anfang an den Punkt am Fadenkreuz
     show(loopStart); if(!playing) play();
   }
