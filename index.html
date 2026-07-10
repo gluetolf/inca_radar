@@ -141,14 +141,17 @@
   .tag.now{background:rgba(118,184,42,.16);color:var(--green-dark)}
   .tag.past{background:rgba(0,0,0,.06);color:var(--muted)}
   .tag.fc{background:rgba(243,162,58,.18);color:#b06b13}
-  .track{position:relative;height:30px}
+  .track{position:relative;height:30px;touch-action:pan-x}
   .ticks{position:absolute;inset:0;display:flex;align-items:center;pointer-events:none}
   .tick{flex:1;height:6px;margin:0 1px;border-radius:3px;background:#cfd6c6;transition:background .2s,height .2s}
   .tick.past{background:#aab59b}.tick.fc{background:#f0c98a}.tick.active{background:var(--green);height:14px}
-  .nowline{position:absolute;top:-3px;bottom:-3px;width:2px;background:var(--green-dark);border-radius:2px;opacity:.6}
+  .nowline{position:absolute;top:-3px;bottom:-3px;width:2px;background:var(--green-dark);border-radius:2px;opacity:.6;pointer-events:none}
   .dayline{position:absolute;top:-2px;bottom:-2px;width:1px;background:rgba(0,0,0,.16);pointer-events:none}
   .daylabel{position:absolute;top:-2px;transform:translateX(3px);font-size:9px;font-weight:700;color:var(--muted);line-height:1;pointer-events:none;white-space:nowrap}
-  input[type=range]{position:absolute;inset:0;width:100%;height:100%;margin:0;opacity:0;cursor:pointer}
+  input[type=range]{position:absolute;inset:0;width:100%;height:100%;margin:0;opacity:0;cursor:pointer;touch-action:pan-x;-webkit-appearance:none;appearance:none;z-index:2}
+  /* Unsichtbarer, aber greifbarer Thumb - iOS braucht eine echte Trefferflaeche zum Ziehen */
+  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:44px;height:44px;border-radius:50%}
+  input[type=range]::-moz-range-thumb{width:44px;height:44px;border:none;border-radius:50%}
   .scalewrap{margin-top:12px}
   .scalehead{display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-bottom:5px}
   .scalebar{height:11px;border-radius:6px;background:linear-gradient(90deg,#2d6ee1,#28b4aa,#5fc850,#e6d746,#f09637,#e13732,#aa196e)}
