@@ -2,9 +2,17 @@
 <html lang="de">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <title>Niederschlagsradar Schweiz</title>
 <meta name="description" content="Animiertes Live-Radar mit Kurzfrist-Prognose für die Schweiz. Quellen: MeteoSchweiz, DWD, Météo-France.">
+<!-- PWA: Installation als Vollbild-App (mehr Kartenflaeche, keine Browserleiste) -->
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#76b82a">
+<!-- iOS liest den Manifest NICHT fuer Icon/Titel/Anzeige - daher separat: -->
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Radar">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Niederschlagsradar Schweiz">
 <meta property="og:locale" content="de_CH">
@@ -48,9 +56,9 @@
   .peak-flip .peak-txt{left:auto;right:7px;transform:rotate(-18deg);transform-origin:right bottom;text-align:right}
   .peak-txt b{font-weight:400;color:#bdc1c8}
   /* EigerMaker-Wasserzeichen oben rechts - Deckkraft 0.42 wie in der Teilen-Vorschau */
-  #wm{position:absolute;right:16px;top:14px;height:48px;width:auto;z-index:450;
+  #wm{position:absolute;right:calc(16px + env(safe-area-inset-right));top:calc(14px + env(safe-area-inset-top));height:48px;width:auto;z-index:450;
       opacity:.42;pointer-events:none;filter:drop-shadow(0 1px 1px rgba(255,255,255,.5))}
-  body.phone #wm{height:38px;right:12px;top:12px}
+  body.phone #wm{height:38px;right:calc(12px + env(safe-area-inset-right));top:calc(12px + env(safe-area-inset-top))}
   /* Dock-Kopfzeile: Ort + Lupe (Suche) links zusammen, Standort/Reload rechts */
   .dockhead{display:flex;align-items:center;gap:10px;margin-bottom:11px}
   .dockhead .ort{display:flex;align-items:center;gap:8px;font-size:16px;font-weight:700;color:var(--ink);min-width:0}
@@ -91,6 +99,19 @@
     background:rgba(224,118,46,.95);color:#fff;font-size:12px;font-weight:600;padding:7px 14px;
     border-radius:999px;box-shadow:var(--shadow);white-space:nowrap;max-width:92vw}
   .delaywarn.on{display:block}
+  /* Vollbild-Button (nur wo Fullscreen-API verfuegbar, per JS eingeblendet) - oben links, dezent */
+  #fsBtn{position:absolute;left:calc(10px + env(safe-area-inset-left));top:calc(10px + env(safe-area-inset-top));z-index:600;
+    display:none;width:38px;height:38px;border-radius:10px;border:1px solid var(--panel-line);
+    background:var(--panel);backdrop-filter:blur(8px);box-shadow:var(--shadow);cursor:pointer;
+    font-size:17px;color:var(--ink);place-items:center}
+  #fsBtn.show{display:grid}
+  /* Installations-Hinweis: dezenter Balken unten, nur Handy, nur einmal, wegklickbar */
+  .install-hint{position:absolute;left:50%;transform:translateX(-50%);bottom:calc(14px + env(safe-area-inset-bottom));
+    z-index:1100;display:none;align-items:center;gap:10px;max-width:92vw;
+    background:var(--ink);color:#fff;font-size:13px;padding:10px 12px 10px 16px;border-radius:12px;box-shadow:0 6px 24px rgba(0,0,0,.3)}
+  .install-hint.show{display:flex}
+  .install-hint #installBtn{background:var(--green);color:#fff;border:none;border-radius:8px;padding:7px 12px;font-size:13px;font-weight:600;cursor:pointer;flex:none}
+  .install-hint #installClose{background:none;border:none;color:rgba(255,255,255,.7);font-size:15px;cursor:pointer;flex:none;padding:2px 4px}
   /* Lupe: gleiche Groesse wie die anderen Kopfzeilen-Buttons (Fadenkreuz) */
   .dockhead .lupe{font-size:15px}
   /* Lizenz-Box */
@@ -104,7 +125,7 @@
   .licinner p{margin:8px 0}
   .licinner a{color:var(--green-dark);text-decoration:underline}
   .licnote{font-size:11px;color:var(--muted);margin-top:14px !important;border-top:1px solid var(--panel-line);padding-top:12px}
-  .dock{position:absolute;left:0;right:0;bottom:0;z-index:500;padding:0 14px 14px;display:flex;justify-content:center;pointer-events:none}
+  .dock{position:absolute;left:0;right:0;bottom:0;z-index:500;padding:0 calc(14px + env(safe-area-inset-right)) calc(14px + env(safe-area-inset-bottom)) calc(14px + env(safe-area-inset-left));display:flex;justify-content:center;pointer-events:none}
   .panel{pointer-events:auto;width:100%;max-width:780px;background:var(--panel);backdrop-filter:blur(10px);border:1px solid var(--panel-line);
     border-radius:18px;box-shadow:var(--shadow);padding:12px 16px 14px}
   .row{display:flex;align-items:center;gap:14px}
@@ -182,6 +203,12 @@
 </div>
 <div class="toast" id="toast"></div>
 <div class="delaywarn" id="delayWarn"></div>
+<button id="fsBtn" title="Vollbild" aria-label="Vollbild">⛶</button>
+<div class="install-hint" id="installHint">
+  <span id="installText">Als App installieren – mehr Kartenfläche</span>
+  <button id="installBtn">Installieren</button>
+  <button id="installClose" aria-label="Schließen">✕</button>
+</div>
 <div class="licbox" id="licbox">
   <div class="licinner">
     <div class="lichead"><b>Datenquellen &amp; Lizenzen</b><button id="licClose" aria-label="Schließen">✕</button></div>
@@ -884,6 +911,58 @@
   // Handy (schmaler Bildschirm): nur die phone-Klasse setzen (Layout regelt das CSS)
   if(window.matchMedia && window.matchMedia('(max-width:520px)').matches){
     document.body.classList.add('phone');
+  }
+
+  // ---- PWA: Vollbild-Button + Installations-Hinweis ----
+  var isStandalone = (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches)
+                     || window.navigator.standalone === true;   // iOS-Sonderweg
+  var isPhone = window.matchMedia && window.matchMedia('(pointer:coarse)').matches;
+  var isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent)
+              || (navigator.platform==='MacIntel' && navigator.maxTouchPoints>1);  // iPadOS tarnt sich als Mac
+
+  // Vollbild-Button: nur zeigen, wenn Fullscreen-API da ist UND nicht schon als App (iOS kann es eh nicht)
+  var fsBtn=document.getElementById('fsBtn');
+  var fsEl=document.documentElement;
+  var canFS = !!(fsEl.requestFullscreen||fsEl.webkitRequestFullscreen);
+  if(canFS && !isStandalone){
+    fsBtn.classList.add('show');
+    fsBtn.onclick=function(){
+      if(document.fullscreenElement||document.webkitFullscreenElement){
+        (document.exitFullscreen||document.webkitExitFullscreen).call(document);
+      } else {
+        (fsEl.requestFullscreen||fsEl.webkitRequestFullscreen).call(fsEl);
+      }
+    };
+  }
+
+  // Installations-Hinweis: nur Handy/Tablet, nur im Browser (nicht als App), nur wenn nicht weggeklickt.
+  var hint=document.getElementById('installHint');
+  var dismissed=false;
+  try{ dismissed = localStorage.getItem('installHintDismissed')==='1'; }catch(e){}
+  var deferredPrompt=null;
+  function showHint(txt){ if(dismissed||isStandalone) return;
+    if(txt) document.getElementById('installText').textContent=txt; hint.classList.add('show'); }
+  function hideHint(){ hint.classList.remove('show'); }
+  document.getElementById('installClose').onclick=function(){
+    hideHint(); try{ localStorage.setItem('installHintDismissed','1'); }catch(e){} dismissed=true; };
+
+  // Android/Chrome: echtes Installations-Event -> ein Tap installiert
+  window.addEventListener('beforeinstallprompt', function(e){
+    e.preventDefault(); deferredPrompt=e;
+    if(isPhone) showHint('Als App installieren – mehr Kartenfläche');
+  });
+  document.getElementById('installBtn').onclick=function(){
+    if(deferredPrompt){                                  // Android: natives Prompt
+      deferredPrompt.prompt();
+      deferredPrompt.userChoice.then(function(){ deferredPrompt=null; hideHint(); });
+    } else if(isIOS){                                    // iOS: Anleitung (kein Auto-Prompt moeglich)
+      document.getElementById('installText').textContent='Tippe auf „Teilen“ und dann „Zum Home-Bildschirm“';
+      document.getElementById('installBtn').style.display='none';
+    }
+  };
+  // iOS zeigt kein beforeinstallprompt -> eigenen Hinweis nach kurzer Nutzung einblenden
+  if(isIOS && isPhone && !isStandalone && !dismissed){
+    setTimeout(function(){ showHint('Als App installieren – mehr Kartenfläche'); }, 4000);
   }
 
 })();
