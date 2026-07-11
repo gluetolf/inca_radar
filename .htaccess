@@ -1,3 +1,12 @@
 # index.php zuerst: liefert index.html aus und setzt bei geteilten ?c=-Links
 # ausschnittsbezogene Open-Graph-Tags (Vorschaubild via ogimg.php).
 DirectoryIndex index.php index.html
+
+# Service Worker nie cachen - sonst koennen App-Updates nicht durchkommen.
+<IfModule mod_headers.c>
+  <FilesMatch "sw\.js$">
+    Header set Cache-Control "no-cache, no-store, must-revalidate"
+    Header set Pragma "no-cache"
+    Header set Expires "0"
+  </FilesMatch>
+</IfModule>

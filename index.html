@@ -66,12 +66,11 @@
   .dockhead .ort-search{display:none;font-size:12px;opacity:.5;flex:none}   /* Antippbar-Hinweis am Ort, nur Handy */
   .dockhead .live{width:8px;height:8px;border-radius:50%;background:var(--green);flex:none}
   .dockhead .lupe{margin-left:auto}
-  .dockhead .locbtn{display:none}                 /* Standort standardmaessig als Karten-Control (Desktop) */
   .dockhead button{width:38px;height:38px;border-radius:10px;border:1px solid var(--panel-line);background:rgba(255,255,255,.7);
     cursor:pointer;font-size:15px;color:var(--ink);display:grid;place-items:center;flex:none}
   .dockhead button:active{transform:scale(.94)}
-  .dockhead .lupe.on,.dockhead .locbtn.on{background:var(--green);color:#fff;border-color:var(--green)}
-  /* Standort-Control (Leaflet-Bar) ueber den Zoom-Buttons - nur Desktop */
+  .dockhead .lupe.on{background:var(--green);color:#fff;border-color:var(--green)}
+  /* Standort-Control (Leaflet-Bar) ueber den Zoom-Buttons - auf allen Geraeten */
   .loc-ctl a{font-size:18px;line-height:30px;color:var(--ink)}
   /* ---- Etappe 2: einklappbare Box (nur Handy). Desktop bleibt immer offen. ---- */
   .grip{display:none}                                         /* Ziehbalken nur auf dem Handy */
@@ -90,9 +89,7 @@
   body.phone .scale-slim-ends{display:flex;justify-content:space-between;font-size:10px;color:var(--muted);margin-top:3px}
   /* Controls ggf. ueber die Box heben (schmale Tablets, iPad Hochformat) - siehe liftControls() */
   .leaflet-bottom{bottom:var(--ctllift,0)}
-  /* Handy: Zoom-/Standort-Controls weg (Gesten genuegen), Standort in die Box */
-  body.phone .leaflet-control-zoom,body.phone .loc-ctl{display:none}
-  body.phone .dockhead .locbtn{display:grid}
+  /* Zoom-/Standort-Controls jetzt auf ALLEN Geraeten (auch Handy) - einheitlich unten rechts */
   /* Handy: separate Lupe entfaellt (verwechselbar mit Zoom neben dem Standort) - stattdessen
      ist der Ortsname selbst antippbar, mit dezentem Such-Icon als Hinweis. */
   body.phone .dockhead .lupe{display:none}
@@ -104,8 +101,8 @@
      daher dort nach oben links (frei - das Wasserzeichen sitzt oben rechts). */
   .leaflet-control-attribution{font-size:10px;background:rgba(255,255,255,.72);padding:2px 8px}
   .leaflet-control-attribution a#licLink{color:var(--green-dark);cursor:pointer;text-decoration:underline;font-weight:600}
-  /* Handy: Leaflet-Attribution ausblenden - stattdessen schlanke Lizenzzeile unten in der Box */
-  body.phone .leaflet-bottom.leaflet-right{display:none}
+  /* Handy: nur die Leaflet-Attribution ausblenden (Credits stehen in der Box) - Zoom/Standort bleiben */
+  body.phone .leaflet-control-attribution{display:none}
   .dockcredit{display:none}
   .appver{font-size:10px;color:var(--muted);opacity:.65;margin-top:6px;text-align:center;letter-spacing:.2px}
   body.phone .dockcredit{display:flex;align-items:center;justify-content:flex-start;gap:5px;margin-top:9px;
@@ -255,7 +252,6 @@
       <div class="track"><div class="ticks" id="ticks"></div><div class="nowline" id="nowline"></div>
         <input type="range" id="slider" min="0" max="0" value="0" step="1" aria-label="Zeit wählen"></div>
     </div>
-    <button class="locbtn" id="homeBtnDock" title="Auf meinen Standort zentrieren">⌖</button>
     <div class="speed"><span style="font-size:11px;color:var(--muted)">Tempo</span>
       <button data-sp="600">langsam</button><button data-sp="350" class="on">normal</button><button data-sp="180">schnell</button></div>
   </div>
@@ -331,12 +327,12 @@
   // "phone"-Geraeten (z.B. iPad Hochformat) reicht die Box fast ueber die ganze Breite und
   // verdeckt sie -> dann die unten verankerten Controls ueber die Box heben.
   function liftControls(){
-    if(document.body.classList.contains('phone')) return;    // Handy: Controls ohnehin ausgeblendet
     var panel=document.querySelector('.panel'); if(!panel) return;
     var pr=panel.getBoundingClientRect();
     // Passt eine ~46px breite Control-Spalte rechts NEBEN die Box (mit etwas Luft)?
+    // Falls nicht (Handy, iPad Hochformat), Controls ueber die Box heben.
     var freeRight = window.innerWidth - pr.right;
-    var lift = (freeRight < 54) ? Math.round(pr.height + 24) : 0;  // sonst ueber die Box heben
+    var lift = (freeRight < 54) ? Math.round(pr.height + 24) : 0;
     document.documentElement.style.setProperty('--ctllift', lift+'px');
   }
   // Bei Groessen-/Orientierungswechsel: Fadenkreuz neu positionieren, Mitte neu erfassen, Controls anpassen
@@ -536,8 +532,7 @@
     },
     {enableHighAccuracy:true,timeout:8000,maximumAge:60000});
   }
-  document.getElementById('homeBtn').onclick=locateMe;                    // Karten-Control (Desktop)
-  var _hbd=document.getElementById('homeBtnDock'); if(_hbd) _hbd.onclick=locateMe;   // Box-Button (Handy)
+  document.getElementById('homeBtn').onclick=locateMe;                    // Karten-Control (alle Geraete)
   // ---- Refresh-Knopf: neueste Daten holen, ohne URL/Position zu aendern ----
   // ---- Ortsmarkierungen: [Name, Breite, Laenge, ab welcher Zoomstufe sichtbar] ----
   // Grosse Staedte ab Zoom 6, mittlere ab 7/8, kleine Orte erst beim Hineinzoomen (9).
@@ -1067,6 +1062,21 @@
   // iOS zeigt kein beforeinstallprompt -> eigenen Hinweis nach kurzer Nutzung einblenden
   if(isIOS && isPhone && !isStandalone && !dismissed){
     setTimeout(function(){ showHint('Als App installieren – mehr Kartenfläche'); }, 4000);
+  }
+  // ---- Service Worker: garantiert aktuelle Version (network-first) + Offline-Faehigkeit ----
+  if('serviceWorker' in navigator){
+    window.addEventListener('load', function(){
+      navigator.serviceWorker.register('sw.js').then(function(reg){
+        reg.addEventListener('updatefound', function(){        // neue SW-Version gefunden
+          var nw=reg.installing;
+          if(nw) nw.addEventListener('statechange', function(){
+            // sobald der neue SW bereit ist und schon ein alter aktiv war -> beim naechsten Laden greift er
+            if(nw.state==='activated' && navigator.serviceWorker.controller){ /* still: naechster Reload ist frisch */ }
+          });
+        });
+        setInterval(function(){ reg.update(); }, 60*60*1000);   // stuendlich auf Updates pruefen
+      }).catch(function(){});
+    });
   }
 
 })();
