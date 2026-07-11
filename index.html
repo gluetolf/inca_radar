@@ -89,6 +89,7 @@
   body.phone .scale-slim-ends{display:flex;justify-content:space-between;font-size:10px;color:var(--muted);margin-top:3px}
   /* Controls ggf. ueber die Box heben (schmale Tablets, iPad Hochformat) - siehe liftControls() */
   .leaflet-bottom{bottom:var(--ctllift,0)}
+  .leaflet-right{right:var(--ctlright,10px)}
   /* Zoom-/Standort-Controls jetzt auf ALLEN Geraeten (auch Handy) - einheitlich unten rechts */
   /* Handy: separate Lupe entfaellt (verwechselbar mit Zoom neben dem Standort) - stattdessen
      ist der Ortsname selbst antippbar, mit dezentem Such-Icon als Hinweis. */
@@ -263,7 +264,7 @@
       <div class="scale-slim-ends"><span>leicht</span><span>stark</span></div>
     </div>
     <div class="dockcredit">© OpenStreetMap, © CARTO · <a href="#" id="licLink2">Daten &amp; Lizenzen</a></div>
-    <div class="appver">Version 2.0 · Stand __BUILD__</div>
+    <div class="appver">Build __BUILD__</div>
   </div>
 </div></div>
 <div class="loading" id="loading"><div class="errbox" id="loadtext"><div class="spinner"></div>Daten werden geladen…</div></div>
@@ -330,10 +331,15 @@
     var panel=document.querySelector('.panel'); if(!panel) return;
     var pr=panel.getBoundingClientRect();
     // Passt eine ~46px breite Control-Spalte rechts NEBEN die Box (mit etwas Luft)?
-    // Falls nicht (Handy, iPad Hochformat), Controls ueber die Box heben.
+    // Falls nicht (Handy, iPad Hochformat), Controls ueber die Box heben UND rechtsbuendig
+    // mit der Box ausrichten (sonst stehen sie weiter rechts als die Box -> sieht schief aus).
     var freeRight = window.innerWidth - pr.right;
-    var lift = (freeRight < 54) ? Math.round(pr.height + 24) : 0;
+    var overBox = freeRight < 54;
+    var lift = overBox ? Math.round(pr.height + 24) : 0;
     document.documentElement.style.setProperty('--ctllift', lift+'px');
+    // rechter Abstand: ueber der Box = gleicher Rand wie die Box (minus 10px Control-Eigenmargin);
+    // sonst Leaflet-Standard.
+    document.documentElement.style.setProperty('--ctlright', overBox ? Math.max(0,Math.round(freeRight)-10)+'px' : '0px');
   }
   // Bei Groessen-/Orientierungswechsel: Fadenkreuz neu positionieren, Mitte neu erfassen, Controls anpassen
   window.addEventListener('resize',function(){ placeCrosshair(); liftControls(); if(typeof refreshCenter==='function') refreshCenter(); });
