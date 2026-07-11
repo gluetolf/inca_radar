@@ -483,15 +483,17 @@ def build(local_radar=None, local_fc=None, local_icon_dir=None):
         "frames": frames,
     }
     json.dump(manifest, open(os.path.join(OUT, "frames.json"), "w"))
-    # index.html kopieren und dabei den Build-Datums-Platzhalter ersetzen (Versionsanzeige).
+    # index.html kopieren und dabei den Build-Platzhalter durch eine kompakte Zahlenfolge
+    # (YYYYMMDDHHMM, Schweizer Zeit) ersetzen - dient als eindeutige Build-Kennung.
     try:
         from zoneinfo import ZoneInfo
-        _bstamp = dt.datetime.now(dt.timezone.utc).astimezone(ZoneInfo("Europe/Zurich")).strftime("%d.%m.%y %H:%M")
+        _bnow = dt.datetime.now(dt.timezone.utc).astimezone(ZoneInfo("Europe/Zurich"))
     except Exception:
-        _bstamp = dt.datetime.now(dt.timezone.utc).strftime("%d.%m.%y %H:%M UTC")
+        _bnow = dt.datetime.now(dt.timezone.utc)
+    _bnum = _bnow.strftime("%Y%m%d%H%M")
     with open(os.path.join(c.HERE, "index.html"), "r", encoding="utf-8") as _f:
         _html = _f.read()
-    _html = _html.replace("__BUILD__", _bstamp)
+    _html = _html.replace("__BUILDNUM__", _bnum)
     with open(os.path.join(OUT, "index.html"), "w", encoding="utf-8") as _f:
         _f.write(_html)
     _aux = []

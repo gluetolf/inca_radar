@@ -100,15 +100,12 @@
   /* Leaflet-Attribution: unaufdringlich, Datenquellen-Link erkennbar.
      Standard unten rechts. Auf dem Handy deckt das Dock die untere Zone,
      daher dort nach oben links (frei - das Wasserzeichen sitzt oben rechts). */
-  .leaflet-control-attribution{font-size:10px;background:rgba(255,255,255,.72);padding:2px 8px}
-  .leaflet-control-attribution a#licLink{color:var(--green-dark);cursor:pointer;text-decoration:underline;font-weight:600}
-  /* Handy: nur die Leaflet-Attribution ausblenden (Credits stehen in der Box) - Zoom/Standort bleiben */
-  body.phone .leaflet-control-attribution{display:none}
-  .dockcredit{display:none}
-  .appver{font-size:10px;color:var(--muted);opacity:.65;margin-top:6px;text-align:center;letter-spacing:.2px}
-  body.phone .dockcredit{display:flex;align-items:center;justify-content:flex-start;gap:5px;margin-top:9px;
+  .leaflet-control-attribution{display:none}      /* Credits stehen in der Box (dockcredit) */
+  /* Credits-/Lizenzzeile in der Box - auf ALLEN Geraeten */
+  .dockcredit{display:flex;align-items:center;justify-content:flex-start;gap:5px;margin-top:9px;
     font-size:10px;color:var(--muted)}
-  body.phone .dockcredit a{color:var(--green-dark);text-decoration:underline;cursor:pointer}
+  .dockcredit a{color:var(--green-dark);text-decoration:underline;cursor:pointer}
+  .appver{margin-left:auto;font-size:9px;color:var(--muted);opacity:.6;letter-spacing:.3px;font-variant-numeric:tabular-nums}
   .liclink:hover{color:var(--ink)}
   /* Verzoegerungs-Warnung: nur bei haengender Quelle, oben mittig */
   .delaywarn{position:absolute;top:14px;left:50%;transform:translateX(-50%);z-index:600;display:none;
@@ -263,8 +260,7 @@
       <div class="scalelabels"><span>0.3</span><span>1</span><span>5</span><span>20</span><span>50+</span></div>
       <div class="scale-slim-ends"><span>leicht</span><span>stark</span></div>
     </div>
-    <div class="dockcredit">© OpenStreetMap, © CARTO · <a href="#" id="licLink2">Daten &amp; Lizenzen</a></div>
-    <div class="appver">Build __BUILD__</div>
+    <div class="dockcredit">© OpenStreetMap, © CARTO · <a href="#" id="licLink2">Daten &amp; Lizenzen</a><span class="appver">__BUILDNUM__</span></div>
   </div>
 </div></div>
 <div class="loading" id="loading"><div class="errbox" id="loadtext"><div class="spinner"></div>Daten werden geladen…</div></div>
