@@ -77,7 +77,8 @@
   .grip{display:none}                                         /* Ziehbalken nur auf dem Handy */
   .scale-slim-ends{display:none}                              /* schlanke Legenden-Enden nur Handy */
   body.phone .grip{display:block;width:38px;height:5px;border-radius:3px;background:rgba(0,0,0,.18);
-    border:none;margin:0 auto 8px;cursor:pointer;padding:0}
+    border:none;margin:0 auto 8px;cursor:pointer;padding:14px 40px;background-clip:content-box;box-sizing:content-box;
+    touch-action:none;position:relative;top:-10px}
   body.phone .collapsible{overflow:hidden;transition:max-height .28s ease, opacity .2s ease, margin .28s ease;max-height:200px}
   /* eingeklappt: die collapsible-Bereiche verschwinden weich */
   body.phone .panel.collapsed .collapsible{max-height:0;opacity:0;margin:0}
@@ -346,12 +347,29 @@
   var panelEl=document.getElementById('panel');
   var gripEl=document.getElementById('grip');
   function isPhoneLayout(){ return document.body.classList.contains('phone'); }
-  function toggleCollapse(){
+  function setCollapsed(on){
     if(!isPhoneLayout()) return;
-    panelEl.classList.toggle('collapsed');
-    try{ localStorage.setItem('boxCollapsed', panelEl.classList.contains('collapsed')?'1':'0'); }catch(e){}
+    panelEl.classList.toggle('collapsed', on);
+    try{ localStorage.setItem('boxCollapsed', on?'1':'0'); }catch(e){}
   }
-  if(gripEl) gripEl.addEventListener('click', toggleCollapse);
+  function toggleCollapse(){ setCollapsed(!panelEl.classList.contains('collapsed')); }
+  if(gripEl){
+    // Tippen: umschalten. Ziehen am Griff: Richtung entscheidet (hoch=auf, runter=zu).
+    var gy0=null, gmoved=false;
+    gripEl.addEventListener('touchstart',function(e){ gy0=e.touches[0].clientY; gmoved=false; },{passive:true});
+    gripEl.addEventListener('touchmove',function(e){
+      if(gy0===null) return;
+      var dy=e.touches[0].clientY-gy0;
+      if(Math.abs(dy)>18){                                   // klare Wisch-Geste erkannt
+        gmoved=true;
+        setCollapsed(dy>0);                                  // runter -> einklappen, hoch -> ausklappen
+        gy0=null;                                            // nur einmal pro Geste ausloesen
+      }
+    },{passive:true});
+    gripEl.addEventListener('touchend',function(){ gy0=null; });
+    // Klick (auch als Fallback fuer Maus/kurzes Tippen ohne nennenswerte Bewegung)
+    gripEl.addEventListener('click',function(e){ if(!gmoved) toggleCollapse(); gmoved=false; });
+  }
   // Nach der Klapp-Animation: Fadenkreuz-Offset, Controls und Mitte neu berechnen (Boxhoehe hat sich geaendert).
   // Am transitionend statt waehrend der Animation, damit es nicht ruckelt.
   if(panelEl) panelEl.addEventListener('transitionend', function(e){
