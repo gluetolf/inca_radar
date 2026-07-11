@@ -49,5 +49,10 @@ if (isset($_GET['c']) && preg_match('~^(\d+(?:\.\d+)?)/(-?\d+(?:\.\d+)?)/(-?\d+(
     $html = $set($html, '~(<meta name="twitter:description" content=")[^"]*(")~', $dH);
     $html = $set($html, '~(<meta name="twitter:image" content=")[^"]*(")~', $img);
 }
+// Kein Caching der HTML-Seite: die installierte PWA (v.a. iOS) soll immer die aktuelle
+// Version holen, nicht eine alte gecachte. Statische Dateien (Icons, JS) duerfen gecacht bleiben.
+header('Cache-Control: no-cache, no-store, must-revalidate');
+header('Pragma: no-cache');
+header('Expires: 0');
 header('Content-Type: text/html; charset=utf-8');
 echo $html;

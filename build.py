@@ -483,7 +483,17 @@ def build(local_radar=None, local_fc=None, local_icon_dir=None):
         "frames": frames,
     }
     json.dump(manifest, open(os.path.join(OUT, "frames.json"), "w"))
-    shutil.copyfile(os.path.join(c.HERE, "index.html"), os.path.join(OUT, "index.html"))
+    # index.html kopieren und dabei den Build-Datums-Platzhalter ersetzen (Versionsanzeige).
+    try:
+        from zoneinfo import ZoneInfo
+        _bstamp = dt.datetime.now(dt.timezone.utc).astimezone(ZoneInfo("Europe/Zurich")).strftime("%d.%m.%y %H:%M")
+    except Exception:
+        _bstamp = dt.datetime.now(dt.timezone.utc).strftime("%d.%m.%y %H:%M UTC")
+    with open(os.path.join(c.HERE, "index.html"), "r", encoding="utf-8") as _f:
+        _html = _f.read()
+    _html = _html.replace("__BUILD__", _bstamp)
+    with open(os.path.join(OUT, "index.html"), "w", encoding="utf-8") as _f:
+        _f.write(_html)
     _aux = []
     _pj = os.path.join(c.HERE, "places.js")                    # ausgelagerte Kartendaten mitkopieren
     if os.path.exists(_pj):
