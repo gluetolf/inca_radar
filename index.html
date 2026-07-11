@@ -381,11 +381,21 @@
     if(_preCollapseCenter){ setViewAtCrosshair(_preCollapseCenter, map.getZoom(), {animate:false}); _preCollapseCenter=null; }
     if(typeof refreshCenter==='function') refreshCenter();
   });
-  // Startzustand auf dem Handy: eingeklappt (mehr Karte), sofern nicht anders gemerkt
+  // Startzustand auf dem Handy: eingeklappt (mehr Karte), sofern nicht anders gemerkt.
+  // OHNE Animation setzen, damit die Box sofort ihre eingeklappte Endhoehe hat - sonst laeuft
+  // der initiale Standort-/Permalink-Sprung waehrend der 0.28s-Klappanimation und der Offset
+  // wird mit einer Zwischenhoehe berechnet (Standort sitzt dann zu tief).
   if(isPhoneLayout()){
     var wantCollapsed=true;
     try{ if(localStorage.getItem('boxCollapsed')==='0') wantCollapsed=false; }catch(e){}
-    if(wantCollapsed) panelEl.classList.add('collapsed');
+    if(wantCollapsed){
+      var _cs=panelEl.querySelectorAll('.collapsible');
+      for(var _i=0;_i<_cs.length;_i++) _cs[_i].style.transition='none';   // Animation kurz aus
+      panelEl.classList.add('collapsed');
+      // Reflow erzwingen, dann Transition wieder an (nur der Init war ohne Animation)
+      void panelEl.offsetHeight;
+      for(var _j=0;_j<_cs.length;_j++) _cs[_j].style.transition='';
+    }
   }
   // Zoom immer um das Fadenkreuz (Mitte des freien Bereichs). setZoomAround verschiebt in EINEM
   // Schritt so, dass der Punkt unterm Fadenkreuz fest bleibt - kein Nachrucken wie bei zoomend-Korrektur.
