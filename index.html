@@ -73,6 +73,20 @@
   .dockhead .lupe.on,.dockhead .locbtn.on{background:var(--green);color:#fff;border-color:var(--green)}
   /* Standort-Control (Leaflet-Bar) ueber den Zoom-Buttons - nur Desktop */
   .loc-ctl a{font-size:18px;line-height:30px;color:var(--ink)}
+  /* ---- Etappe 2: einklappbare Box (nur Handy). Desktop bleibt immer offen. ---- */
+  .grip{display:none}                                         /* Ziehbalken nur auf dem Handy */
+  .scale-slim-ends{display:none}                              /* schlanke Legenden-Enden nur Handy */
+  body.phone .grip{display:block;width:38px;height:5px;border-radius:3px;background:rgba(0,0,0,.18);
+    border:none;margin:0 auto 8px;cursor:pointer;padding:0}
+  body.phone .collapsible{overflow:hidden;transition:max-height .28s ease, opacity .2s ease, margin .28s ease;max-height:200px}
+  /* eingeklappt: die collapsible-Bereiche verschwinden weich */
+  body.phone .panel.collapsed .collapsible{max-height:0;opacity:0;margin:0}
+  body.phone .panel.collapsed .collapsible-lower{margin-top:0}
+  /* schlanke Legende: auf dem Handy die Zahlen weg, stattdessen nur leicht -> stark */
+  body.phone .scalehead{display:none}
+  body.phone .scalelabels{display:none}
+  body.phone .scalebar{height:8px}
+  body.phone .scale-slim-ends{display:flex;justify-content:space-between;font-size:10px;color:var(--muted);margin-top:3px}
   /* Controls ggf. ueber die Box heben (schmale Tablets, iPad Hochformat) - siehe liftControls() */
   .leaflet-bottom{bottom:var(--ctllift,0)}
   /* Handy: Zoom-/Standort-Controls weg (Gesten genuegen), Standort in die Box */
@@ -224,11 +238,13 @@
     <p class="licnote">Die Datenquellen unterstützen diesen Dienst nicht und stehen in keiner Verbindung zu ihm.</p>
   </div>
 </div>
-<div class="dock"><div class="panel">
-  <div class="dockhead">
-    <span class="ort" id="orthead"><span class="live" id="livedot"></span><span id="ortname">Schweiz</span><span class="ort-search" aria-hidden="true">🔍</span></span>
-    <button class="lupe" id="searchBtn" title="Ort suchen">🔍</button>
-    <button class="locbtn" id="homeBtnDock" title="Auf meinen Standort zentrieren">⌖</button>
+<div class="dock"><div class="panel" id="panel">
+  <button class="grip" id="grip" aria-label="Box auf-/zuklappen"></button>
+  <div class="collapsible" id="collapsible">
+    <div class="dockhead">
+      <span class="ort" id="orthead"><span class="live" id="livedot"></span><span id="ortname">Schweiz</span><span class="ort-search" aria-hidden="true">🔍</span></span>
+      <button class="lupe" id="searchBtn" title="Ort suchen">🔍</button>
+    </div>
   </div>
   <div class="row">
     <button class="play" id="play" aria-label="Abspielen">▶</button>
@@ -237,15 +253,19 @@
       <div class="track"><div class="ticks" id="ticks"></div><div class="nowline" id="nowline"></div>
         <input type="range" id="slider" min="0" max="0" value="0" step="1" aria-label="Zeit wählen"></div>
     </div>
+    <button class="locbtn" id="homeBtnDock" title="Auf meinen Standort zentrieren">⌖</button>
     <div class="speed"><span style="font-size:11px;color:var(--muted)">Tempo</span>
       <button data-sp="600">langsam</button><button data-sp="350" class="on">normal</button><button data-sp="180">schnell</button></div>
   </div>
-  <div class="scalewrap">
-    <div class="scalehead"><span>Niederschlagsintensität</span><span id="hailLegend" style="display:none"><i class="hailsw"></i>Hagel</span><span>mm/h</span></div>
-    <div class="scalebar"></div>
-    <div class="scalelabels"><span>0.3</span><span>1</span><span>5</span><span>20</span><span>50+</span></div>
+  <div class="collapsible collapsible-lower">
+    <div class="scalewrap">
+      <div class="scalehead"><span>Niederschlagsintensität</span><span id="hailLegend" style="display:none"><i class="hailsw"></i>Hagel</span><span>mm/h</span></div>
+      <div class="scalebar"></div>
+      <div class="scalelabels"><span>0.3</span><span>1</span><span>5</span><span>20</span><span>50+</span></div>
+      <div class="scale-slim-ends"><span>leicht</span><span>stark</span></div>
+    </div>
+    <div class="dockcredit">© OpenStreetMap, © CARTO · <a href="#" id="licLink2">Daten &amp; Lizenzen</a></div>
   </div>
-  <div class="dockcredit">© OpenStreetMap, © CARTO · <a href="#" id="licLink2">Daten &amp; Lizenzen</a></div>
 </div></div>
 <div class="loading" id="loading"><div class="errbox" id="loadtext"><div class="spinner"></div>Daten werden geladen…</div></div>
 
@@ -260,6 +280,10 @@
 (function(){
   "use strict";
   // ---- Karte + Hintergrund (hell/dunkel) ----
+  // Handy (schmaler Bildschirm) frueh erkennen: das Layout (Collapse, Controls) haengt davon ab.
+  if(window.matchMedia && window.matchMedia('(max-width:520px)').matches){
+    document.body.classList.add('phone');
+  }
   var SWISS=[46.83,8.23], Z=8;                 // Standard-Zentrum/Zoom (Schweiz)
   var map=L.map('map',{center:SWISS,zoom:Z,minZoom:6,maxZoom:13,zoomControl:false,
     scrollWheelZoom:false,doubleClickZoom:false,touchZoom:'center'}).setView(SWISS,Z);
@@ -317,6 +341,28 @@
   // initial, sobald die Box gerendert ist (unabhaengig vom Daten-Load)
   requestAnimationFrame(function(){ requestAnimationFrame(liftControls); });
   if(document.fonts&&document.fonts.ready) document.fonts.ready.then(liftControls);
+
+  // ---- Etappe 2: Box ein-/ausklappen (nur Handy) ----
+  var panelEl=document.getElementById('panel');
+  var gripEl=document.getElementById('grip');
+  function isPhoneLayout(){ return document.body.classList.contains('phone'); }
+  function toggleCollapse(){
+    if(!isPhoneLayout()) return;
+    panelEl.classList.toggle('collapsed');
+    try{ localStorage.setItem('boxCollapsed', panelEl.classList.contains('collapsed')?'1':'0'); }catch(e){}
+  }
+  if(gripEl) gripEl.addEventListener('click', toggleCollapse);
+  // Nach der Klapp-Animation: Fadenkreuz-Offset, Controls und Mitte neu berechnen (Boxhoehe hat sich geaendert).
+  // Am transitionend statt waehrend der Animation, damit es nicht ruckelt.
+  if(panelEl) panelEl.addEventListener('transitionend', function(e){
+    if(e.propertyName==='max-height'){ placeCrosshair(); liftControls(); if(typeof refreshCenter==='function') refreshCenter(); }
+  });
+  // Startzustand auf dem Handy: eingeklappt (mehr Karte), sofern nicht anders gemerkt
+  if(isPhoneLayout()){
+    var wantCollapsed=true;
+    try{ if(localStorage.getItem('boxCollapsed')==='0') wantCollapsed=false; }catch(e){}
+    if(wantCollapsed) panelEl.classList.add('collapsed');
+  }
   // Zoom immer um das Fadenkreuz (Mitte des freien Bereichs). setZoomAround verschiebt in EINEM
   // Schritt so, dass der Punkt unterm Fadenkreuz fest bleibt - kein Nachrucken wie bei zoomend-Korrektur.
   function crosshairPt(){ return L.point(map.getSize().x/2, map.getSize().y/2 - mapOffsetY()); }
@@ -928,11 +974,6 @@
   });
   document.getElementById('licClose').onclick=function(){LICBOX.classList.remove('open');};
   LICBOX.onclick=function(e){ if(e.target===LICBOX) LICBOX.classList.remove('open'); };
-
-  // Handy (schmaler Bildschirm): nur die phone-Klasse setzen (Layout regelt das CSS)
-  if(window.matchMedia && window.matchMedia('(max-width:520px)').matches){
-    document.body.classList.add('phone');
-  }
 
   // ---- PWA: Vollbild-Button + Installations-Hinweis ----
   var isStandalone = (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches)
