@@ -347,8 +347,10 @@
   var panelEl=document.getElementById('panel');
   var gripEl=document.getElementById('grip');
   function isPhoneLayout(){ return document.body.classList.contains('phone'); }
+  var _preCollapseCenter=null;
   function setCollapsed(on){
     if(!isPhoneLayout()) return;
+    _preCollapseCenter=crosshairLatLng();                 // Punkt unterm Fadenkreuz VOR der Hoehenaenderung merken
     panelEl.classList.toggle('collapsed', on);
     try{ localStorage.setItem('boxCollapsed', on?'1':'0'); }catch(e){}
   }
@@ -370,10 +372,14 @@
     // Klick (auch als Fallback fuer Maus/kurzes Tippen ohne nennenswerte Bewegung)
     gripEl.addEventListener('click',function(e){ if(!gmoved) toggleCollapse(); gmoved=false; });
   }
-  // Nach der Klapp-Animation: Fadenkreuz-Offset, Controls und Mitte neu berechnen (Boxhoehe hat sich geaendert).
-  // Am transitionend statt waehrend der Animation, damit es nicht ruckelt.
+  // Nach der Klapp-Animation: Boxhoehe hat sich geaendert -> Fadenkreuz-Symbol und Controls neu setzen
+  // UND die Karte so verschieben, dass der Punkt, der vorher unterm Fadenkreuz lag, wieder dort liegt
+  // (sonst springt das Zentrum beim Klappen hoch/runter). Am transitionend, nicht waehrend der Animation.
   if(panelEl) panelEl.addEventListener('transitionend', function(e){
-    if(e.propertyName==='max-height'){ placeCrosshair(); liftControls(); if(typeof refreshCenter==='function') refreshCenter(); }
+    if(e.propertyName!=='max-height') return;
+    placeCrosshair(); liftControls();
+    if(_preCollapseCenter){ setViewAtCrosshair(_preCollapseCenter, map.getZoom(), {animate:false}); _preCollapseCenter=null; }
+    if(typeof refreshCenter==='function') refreshCenter();
   });
   // Startzustand auf dem Handy: eingeklappt (mehr Karte), sofern nicht anders gemerkt
   if(isPhoneLayout()){
