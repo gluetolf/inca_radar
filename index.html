@@ -352,8 +352,20 @@
     // sonst Leaflet-Standard.
     document.documentElement.style.setProperty('--ctlright', overBox ? Math.max(0,Math.round(freeRight)-10)+'px' : '0px');
   }
-  // Bei Groessen-/Orientierungswechsel: Fadenkreuz neu positionieren, Mitte neu erfassen, Controls anpassen
-  window.addEventListener('resize',function(){ placeCrosshair(); liftControls(); if(typeof refreshCenter==='function') refreshCenter(); });
+  // Bei Groessen-/Orientierungswechsel: Leaflet muss seine Groesse neu vermessen (sonst behaelt
+  // die Karte nach dem Drehen die alte Hoehe), dann Fadenkreuz/Controls/Mitte neu setzen.
+  function onViewportChange(){
+    if(map && map.invalidateSize) map.invalidateSize(false);   // Leaflet-Groesse neu berechnen
+    placeCrosshair(); liftControls();
+    if(typeof refreshCenter==='function') refreshCenter();
+  }
+  window.addEventListener('resize', onViewportChange);
+  window.addEventListener('orientationchange', function(){
+    // nach orientationchange melden manche Browser die neue Groesse erst verzoegert
+    setTimeout(onViewportChange, 60); setTimeout(onViewportChange, 300);
+  });
+  // BFCache-Wiederherstellung (Zurueck-Navigation / iOS): Karte neu vermessen
+  window.addEventListener('pageshow', function(e){ if(e.persisted) onViewportChange(); });
   // initial, sobald die Box gerendert ist (unabhaengig vom Daten-Load)
   requestAnimationFrame(function(){ requestAnimationFrame(liftControls); });
   if(document.fonts&&document.fonts.ready) document.fonts.ready.then(liftControls);
