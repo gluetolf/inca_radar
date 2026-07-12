@@ -294,9 +294,18 @@
 (function(){
   "use strict";
   // ---- Karte + Hintergrund (hell/dunkel) ----
-  // Kartenhoehe explizit aus window.innerHeight setzen (iPad-robust, s. CSS-Kommentar zu #map).
-  function setAppHeight(){ document.documentElement.style.setProperty('--app-height', window.innerHeight+'px'); }
+  // Kartenhoehe explizit aus der sichtbaren Viewporthoehe setzen (iPad-robust, s. CSS-Kommentar zu #map).
+  // visualViewport ist auf iOS zuverlaessiger als innerHeight; Fallback auf innerHeight.
+  function setAppHeight(){
+    var h=(window.visualViewport && window.visualViewport.height) ? window.visualViewport.height : window.innerHeight;
+    document.documentElement.style.setProperty('--app-height', Math.round(h)+'px');
+    if(map && map.invalidateSize) map.invalidateSize(false);
+  }
   setAppHeight();
+  // iPad/iOS meldet die korrekte Hoehe beim Laden oft erst verzoegert -> mehrfach nachsetzen.
+  [0,60,150,300,600].forEach(function(ms){ setTimeout(setAppHeight, ms); });
+  window.addEventListener('load', setAppHeight);
+  if(window.visualViewport){ window.visualViewport.addEventListener('resize', setAppHeight); }
   // Handy (schmaler Bildschirm) frueh erkennen: das Layout (Collapse, Controls) haengt davon ab.
   if(window.matchMedia && window.matchMedia('(max-width:520px)').matches){
     document.body.classList.add('phone');
