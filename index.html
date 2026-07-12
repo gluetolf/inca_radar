@@ -107,8 +107,9 @@
      daher dort nach oben links (frei - das Wasserzeichen sitzt oben rechts). */
   .leaflet-control-attribution{display:none}      /* Credits stehen in der Box (dockcredit) */
   /* Credits-/Lizenzzeile in der Box - auf ALLEN Geraeten */
-  .dockcredit{display:flex;align-items:center;justify-content:flex-start;gap:5px;margin-top:9px;
-    font-size:10px;color:var(--muted)}
+  .dockcredit{display:flex;align-items:baseline;justify-content:flex-start;gap:5px;margin-top:9px;
+    font-size:10px;color:var(--muted);line-height:1}
+  .dockcredit .credit-txt,.dockcredit a,.dockcredit .appver{line-height:1;vertical-align:baseline}
   .dockcredit a{color:var(--green-dark);text-decoration:underline;cursor:pointer}
   .appver{margin-left:auto;font-size:9px;color:var(--muted);opacity:.6;letter-spacing:.3px;font-variant-numeric:tabular-nums}
   .liclink:hover{color:var(--ink)}
@@ -272,7 +273,7 @@
       <div class="scalelabels"><span>0.3</span><span>1</span><span>5</span><span>20</span><span>50+</span></div>
       <div class="scale-slim-ends"><span>leicht</span><span>stark</span></div>
     </div>
-    <div class="dockcredit">© OpenStreetMap, © CARTO · <a href="#" id="licLink2">Daten &amp; Lizenzen</a><span class="appver">__BUILDNUM__</span></div>
+    <div class="dockcredit"><span class="credit-txt">© OpenStreetMap, © CARTO · </span><a href="#" id="licLink2">Daten &amp; Lizenzen</a><span class="appver">__BUILDNUM__</span></div>
   </div>
 </div></div>
 <div class="loading" id="loading"><div class="errbox" id="loadtext"><div class="spinner"></div>Daten werden geladen…</div></div>
