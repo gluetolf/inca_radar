@@ -107,9 +107,11 @@
      daher dort nach oben links (frei - das Wasserzeichen sitzt oben rechts). */
   .leaflet-control-attribution{display:none}      /* Credits stehen in der Box (dockcredit) */
   /* Credits-/Lizenzzeile in der Box - auf ALLEN Geraeten */
-  .dockcredit{display:flex;align-items:baseline;justify-content:flex-start;gap:5px;margin-top:9px;
-    font-size:10px;color:var(--muted);line-height:1}
-  .dockcredit .credit-txt,.dockcredit a,.dockcredit .appver{line-height:1;vertical-align:baseline}
+  .dockcredit{display:flex;align-items:center;justify-content:flex-start;gap:5px;margin-top:9px;
+    font-size:10px;color:var(--muted)}
+  /* Alle Teile auf identische feste Hoehe, Text per line-height mittig -> browserunabhaengig
+     (auch Firefox, das <a>/Text/span sonst unterschiedlich vertikal ausrichtet) auf einer Linie. */
+  .dockcredit .credit-txt,.dockcredit a,.dockcredit .appver{height:14px;line-height:14px;display:inline-block}
   .dockcredit a{color:var(--green-dark);text-decoration:underline;cursor:pointer}
   .appver{margin-left:auto;font-size:9px;color:var(--muted);opacity:.6;letter-spacing:.3px;font-variant-numeric:tabular-nums}
   .liclink:hover{color:var(--ink)}
@@ -364,7 +366,7 @@
   function setCollapsed(on){
     _preCollapseCenter=crosshairLatLng();                 // Punkt unterm Fadenkreuz VOR der Hoehenaenderung merken
     panelEl.classList.toggle('collapsed', on);
-    try{ localStorage.setItem('boxCollapsed', on?'1':'0'); }catch(e){}
+    try{ localStorage.setItem('boxCollapsed', on?'1':'0'); localStorage.setItem('boxCollapsedAt', String(Date.now())); }catch(e){}
   }
   function toggleCollapse(){ setCollapsed(!panelEl.classList.contains('collapsed')); }
   if(gripEl){
@@ -394,11 +396,18 @@
     if(typeof refreshCenter==='function') refreshCenter();
   });
   // Startzustand: Handy eingeklappt (mehr Karte), Desktop/iPad ausgeklappt (Platz genug).
-  // Gemerkte Wahl (localStorage) hat Vorrang. OHNE Animation setzen, damit die Box sofort ihre
-  // Endhoehe hat - sonst laeuft der initiale Standort-/Permalink-Sprung waehrend der Klappanimation
-  // und der Offset wird mit einer Zwischenhoehe berechnet (Position sitzt dann daneben).
+  // Die gemerkte Wahl gilt nur, wenn sie FRISCH ist (< 15 Min) - so behaelt ein schneller Reload
+  // den Zustand, aber nach laengerer Pause / neuer Version startet es wieder im Geraete-Default.
+  // OHNE Animation setzen, damit die Box sofort ihre Endhoehe hat (sonst laeuft der initiale
+  // Standort-/Permalink-Sprung waehrend der Klappanimation mit falschem Offset).
   var wantCollapsed = isPhoneLayout();                    // Default je nach Geraet
-  try{ var _saved=localStorage.getItem('boxCollapsed'); if(_saved==='1') wantCollapsed=true; else if(_saved==='0') wantCollapsed=false; }catch(e){}
+  try{
+    var _saved=localStorage.getItem('boxCollapsed');
+    var _at=parseInt(localStorage.getItem('boxCollapsedAt')||'0',10);
+    var _fresh=(Date.now()-_at) < 15*60*1000;             // 15 Minuten
+    if(_fresh && _saved==='1') wantCollapsed=true;
+    else if(_fresh && _saved==='0') wantCollapsed=false;  // frische Wahl gewinnt; sonst Default
+  }catch(e){}
   if(wantCollapsed){
     var _cs=panelEl.querySelectorAll('.collapsible');
     for(var _i=0;_i<_cs.length;_i++) _cs[_i].style.transition='none';   // Animation kurz aus
