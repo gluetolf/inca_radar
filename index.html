@@ -459,14 +459,35 @@
     var ready=(document.fonts&&document.fonts.ready)?document.fonts.ready:Promise.resolve();
     ready.then(function(){ requestAnimationFrame(function(){ requestAnimationFrame(fn); }); });
   };
+  // Zwei-Stufen-Standort: erst grob+schnell (Netzwerk/WLAN, ~1s), dann im Hintergrund genau (GPS)
+  // nachjustieren. onFix(pos, stage) wird ggf. zweimal aufgerufen: stage 'coarse' dann 'fine'.
+  // Die genaue Stufe meldet nur, wenn sie sich spuerbar (>60m) von der groben unterscheidet.
+  function locateProgressive(onFix, onErr){
+    if(!navigator.geolocation){ if(onErr)onErr({code:0}); return; }
+    var coarse=null, done1=false;
+    // Stufe 1: schnell & grob
+    navigator.geolocation.getCurrentPosition(function(pos){
+      done1=true; coarse=pos; onFix(pos,'coarse');
+    }, function(err){
+      done1=true; if(onErr)onErr(err);            // grob fehlgeschlagen -> Fehler melden
+    }, {enableHighAccuracy:false, timeout:6000, maximumAge:300000});
+    // Stufe 2: genau, laeuft parallel/danach; justiert nur bei spuerbarem Unterschied nach
+    navigator.geolocation.getCurrentPosition(function(pos){
+      if(!coarse){ if(!done1) onFix(pos,'coarse'); else onFix(pos,'fine'); return; }
+      var d=map.distance([coarse.coords.latitude,coarse.coords.longitude],[pos.coords.latitude,pos.coords.longitude]);
+      if(d>60) onFix(pos,'fine');                 // nur nachjustieren, wenn's sich lohnt
+    }, function(){}, {enableHighAccuracy:true, timeout:12000, maximumAge:0});
+  }
+
   if(_hp){
     map.setView([_hp.lat,_hp.lng],Math.min(13,Math.max(6,_hp.z)),{animate:false});   // grob sofort
     _afterLayout(function(){ placeCrosshair(); setViewAtCrosshair([_hp.lat,_hp.lng],Math.min(13,Math.max(6,_hp.z)),{animate:false}); });
   }
-  else if(navigator.geolocation){            // keine Position in der URL -> direkt auf den Standort zoomen
-    navigator.geolocation.getCurrentPosition(function(pos){
-      _afterLayout(function(){ placeCrosshair(); setViewAtCrosshair([pos.coords.latitude,pos.coords.longitude],11); });
-    }, function(){}, {timeout:8000,maximumAge:600000});
+  else if(navigator.geolocation){            // keine Position in der URL -> zum Standort (erst grob, dann genau)
+    locateProgressive(function(pos,stage){
+      _afterLayout(function(){ placeCrosshair();
+        setViewAtCrosshair([pos.coords.latitude,pos.coords.longitude],11,{animate:stage==='fine'}); });
+    });
   }
   map.on('moveend',writeState); writeState();
   // Fadenkreuz-Modell: der angezeigte Wert gilt immer fuer den Punkt am Fadenkreuz (Mitte des freien Bereichs).
@@ -539,18 +560,17 @@
     var btn=this&&this.classList?this:document.getElementById('homeBtn'); btn.classList.add('on');
     if(!navigator.geolocation){btn.classList.remove('on');
       toast('Dein Browser unterstützt keine Standortbestimmung.',6000);return;}
-    navigator.geolocation.getCurrentPosition(function(pos){
+    locateProgressive(function(pos,stage){
       var ll=L.latLng(pos.coords.latitude,pos.coords.longitude);
       placeCrosshair();                                  // Offset frisch (falls Box-Hoehe sich aenderte)
-      setViewAtCrosshair(ll, Math.max(map.getZoom(),9)); // zentrieren, Zoom nie verkleinern (nur ggf. hinein)
+      setViewAtCrosshair(ll, Math.max(map.getZoom(),9), {animate:stage==='fine'}); // Zoom nie verkleinern
       document.getElementById('toast').style.display='none';
-      btn.classList.remove('on');
+      if(stage==='coarse') btn.classList.remove('on');   // Button-Feedback endet, sobald grob da ist
     },function(err){                            // Fehler: je nach Ursache passender Hinweis
       btn.classList.remove('on');
       if(err && err.code===1) toast(GEO_BLOCKED,14000);                 // PERMISSION_DENIED
       else toast('Standort konnte nicht ermittelt werden. Bitte erneut versuchen.',6000);
-    },
-    {enableHighAccuracy:true,timeout:8000,maximumAge:60000});
+    });
   }
   document.getElementById('homeBtn').onclick=locateMe;                    // Karten-Control (alle Geraete)
   // ---- Refresh-Knopf: neueste Daten holen, ohne URL/Position zu aendern ----
