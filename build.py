@@ -490,7 +490,7 @@ def build(local_radar=None, local_fc=None, local_icon_dir=None):
         _bnow = dt.datetime.now(dt.timezone.utc).astimezone(ZoneInfo("Europe/Zurich"))
     except Exception:
         _bnow = dt.datetime.now(dt.timezone.utc)
-    _bnum = _bnow.strftime("%Y%m%d%H%M")
+    _bnum = _bnow.strftime("%y%m%d%H%M")
     with open(os.path.join(c.HERE, "index.html"), "r", encoding="utf-8") as _f:
         _html = _f.read()
     _html = _html.replace("__BUILDNUM__", _bnum)
