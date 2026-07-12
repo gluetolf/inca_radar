@@ -73,20 +73,25 @@
   /* Standort-Control (Leaflet-Bar) ueber den Zoom-Buttons - auf allen Geraeten */
   .loc-ctl a{font-size:18px;line-height:30px;color:var(--ink)}
   /* ---- Etappe 2: einklappbare Box (nur Handy). Desktop bleibt immer offen. ---- */
-  .grip{display:none}                                         /* Ziehbalken nur auf dem Handy */
   .scale-slim-ends{display:none}                              /* schlanke Legenden-Enden nur Handy */
-  body.phone .grip{display:block;width:38px;height:5px;border-radius:3px;background:rgba(0,0,0,.18);
+  /* Grip + Einklappen auf ALLEN Geraeten (Handy startet eingeklappt, Desktop/iPad ausgeklappt) */
+  .grip{display:block;width:38px;height:5px;border-radius:3px;background:rgba(0,0,0,.18);
     border:none;margin:0 auto 8px;cursor:pointer;padding:14px 40px;background-clip:content-box;box-sizing:content-box;
     touch-action:none;position:relative;top:-10px}
-  body.phone .collapsible{overflow:hidden;transition:max-height .28s ease, opacity .2s ease, margin .28s ease;max-height:200px}
+  .collapsible{overflow:hidden;transition:max-height .28s ease, opacity .2s ease, margin .28s ease;max-height:400px}
   /* eingeklappt: die collapsible-Bereiche verschwinden weich */
-  body.phone .panel.collapsed .collapsible{max-height:0;opacity:0;margin:0}
-  body.phone .panel.collapsed .collapsible-lower{margin-top:0}
-  /* schlanke Legende: auf dem Handy die Zahlen weg, stattdessen nur leicht -> stark */
+  .panel.collapsed .collapsible{max-height:0;opacity:0;margin:0}
+  .panel.collapsed .collapsible-lower{margin-top:0}
+  /* schlanke Legende: nur auf dem Handy die Zahlen weg, stattdessen nur leicht -> stark */
   body.phone .scalehead{display:none}
   body.phone .scalelabels{display:none}
   body.phone .scalebar{height:8px}
   body.phone .scale-slim-ends{display:flex;justify-content:space-between;font-size:10px;color:var(--muted);margin-top:3px}
+  /* Handy: Tempo kompakt als Symbole (Platz neben der Uhrzeit) */
+  body.phone .speed .speed-lbl{display:none}
+  body.phone .speed .sp-word{display:none}
+  body.phone .speed .sp-icon{display:inline;font-size:15px;line-height:1}
+  body.phone .speed button{padding:4px 6px}
   /* Controls ggf. ueber die Box heben (schmale Tablets, iPad Hochformat) - siehe liftControls() */
   .leaflet-bottom{bottom:var(--ctllift,0)}
   .leaflet-right{right:var(--ctlright,10px)}
@@ -171,6 +176,8 @@
     background:repeating-linear-gradient(45deg,#480022 0 2px,#e13732 2px 4px)}
   .scalelabels{display:flex;justify-content:space-between;font-size:10px;color:var(--muted);margin-top:4px}
   .speed{display:flex;gap:4px;align-items:center}
+  .speed .sp-icon{display:none}                              /* Symbol nur auf dem Handy */
+  .speed button .sp-word{display:inline}
   .speed button{font-size:11px;font-weight:600;color:var(--muted);background:none;border:none;cursor:pointer;padding:4px 7px;border-radius:7px}
   .speed button.on{background:var(--green);color:#fff}
   .searchbox{position:absolute;bottom:210px;left:50%;transform:translateX(-50%);z-index:600;display:none;width:min(340px,92vw)}
@@ -205,7 +212,6 @@
   .spinner{width:34px;height:34px;border:3px solid #c3ccb6;border-top-color:var(--green);border-radius:50%;animation:spin .8s linear infinite;margin:0 auto 12px}
   @keyframes spin{to{transform:rotate(360deg)}}
   @media (max-width:560px){.bigtime{font-size:18px}
-    .speed{display:none}
     .dockhead .ort{font-size:15px}}
 </style>
 </head>
@@ -246,12 +252,13 @@
   <div class="row">
     <button class="play" id="play" aria-label="Abspielen">▶</button>
     <div class="timewrap">
-      <div class="timehead"><span class="bigtime" id="bigtime">--:--</span></div>
+      <div class="timehead"><span class="bigtime" id="bigtime">--:--</span>
+        <div class="speed"><span class="speed-lbl" style="font-size:11px;color:var(--muted)">Tempo</span>
+          <button data-sp="600"><span class="sp-word">langsam</span><span class="sp-icon">🐢</span></button><button data-sp="350" class="on"><span class="sp-word">normal</span><span class="sp-icon">🚶</span></button><button data-sp="180"><span class="sp-word">schnell</span><span class="sp-icon">🐇</span></button></div>
+      </div>
       <div class="track"><div class="ticks" id="ticks"></div><div class="nowline" id="nowline"></div>
         <input type="range" id="slider" min="0" max="0" value="0" step="1" aria-label="Zeit wählen"></div>
     </div>
-    <div class="speed"><span style="font-size:11px;color:var(--muted)">Tempo</span>
-      <button data-sp="600">langsam</button><button data-sp="350" class="on">normal</button><button data-sp="180">schnell</button></div>
   </div>
   <div class="collapsible collapsible-lower">
     <div class="scalewrap">
@@ -349,7 +356,6 @@
   function isPhoneLayout(){ return document.body.classList.contains('phone'); }
   var _preCollapseCenter=null;
   function setCollapsed(on){
-    if(!isPhoneLayout()) return;
     _preCollapseCenter=crosshairLatLng();                 // Punkt unterm Fadenkreuz VOR der Hoehenaenderung merken
     panelEl.classList.toggle('collapsed', on);
     try{ localStorage.setItem('boxCollapsed', on?'1':'0'); }catch(e){}
@@ -381,21 +387,18 @@
     if(_preCollapseCenter){ setViewAtCrosshair(_preCollapseCenter, map.getZoom(), {animate:false}); _preCollapseCenter=null; }
     if(typeof refreshCenter==='function') refreshCenter();
   });
-  // Startzustand auf dem Handy: eingeklappt (mehr Karte), sofern nicht anders gemerkt.
-  // OHNE Animation setzen, damit die Box sofort ihre eingeklappte Endhoehe hat - sonst laeuft
-  // der initiale Standort-/Permalink-Sprung waehrend der 0.28s-Klappanimation und der Offset
-  // wird mit einer Zwischenhoehe berechnet (Standort sitzt dann zu tief).
-  if(isPhoneLayout()){
-    var wantCollapsed=true;
-    try{ if(localStorage.getItem('boxCollapsed')==='0') wantCollapsed=false; }catch(e){}
-    if(wantCollapsed){
-      var _cs=panelEl.querySelectorAll('.collapsible');
-      for(var _i=0;_i<_cs.length;_i++) _cs[_i].style.transition='none';   // Animation kurz aus
-      panelEl.classList.add('collapsed');
-      // Reflow erzwingen, dann Transition wieder an (nur der Init war ohne Animation)
-      void panelEl.offsetHeight;
-      for(var _j=0;_j<_cs.length;_j++) _cs[_j].style.transition='';
-    }
+  // Startzustand: Handy eingeklappt (mehr Karte), Desktop/iPad ausgeklappt (Platz genug).
+  // Gemerkte Wahl (localStorage) hat Vorrang. OHNE Animation setzen, damit die Box sofort ihre
+  // Endhoehe hat - sonst laeuft der initiale Standort-/Permalink-Sprung waehrend der Klappanimation
+  // und der Offset wird mit einer Zwischenhoehe berechnet (Position sitzt dann daneben).
+  var wantCollapsed = isPhoneLayout();                    // Default je nach Geraet
+  try{ var _saved=localStorage.getItem('boxCollapsed'); if(_saved==='1') wantCollapsed=true; else if(_saved==='0') wantCollapsed=false; }catch(e){}
+  if(wantCollapsed){
+    var _cs=panelEl.querySelectorAll('.collapsible');
+    for(var _i=0;_i<_cs.length;_i++) _cs[_i].style.transition='none';   // Animation kurz aus
+    panelEl.classList.add('collapsed');
+    void panelEl.offsetHeight;                            // Reflow erzwingen
+    for(var _j=0;_j<_cs.length;_j++) _cs[_j].style.transition='';       // Transition wieder an
   }
   // Zoom immer um das Fadenkreuz (Mitte des freien Bereichs). setZoomAround verschiebt in EINEM
   // Schritt so, dass der Punkt unterm Fadenkreuz fest bleibt - kein Nachrucken wie bei zoomend-Korrektur.
