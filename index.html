@@ -1068,7 +1068,7 @@
     frames.forEach(function(f){imgFor(f._url);});                          // alle Bilder sofort vorladen (Mobile: keine Luecken)
     // Hagel-Layer: auto-aktiv, wenn irgendwo POH >= 80 %; Bilder je Radarzeit vorladen
     hailFiles={};
-    hailOn=!!(data.hail && data.hail.max>=80 && data.hail.files && Object.keys(data.hail.files).length);
+    hailOn=!!(data.hail && data.hail.max>=50 && data.hail.files && Object.keys(data.hail.files).length);
     if(hailOn){
       for(var ht in data.hail.files){
         hailFiles[ht]=(data.tile_base||'')+data.hail.files[ht]+'?v='+(data.v||'');
@@ -1193,7 +1193,7 @@
   function hailHint(){                                  // Legende -> klickbarer Hinweis "Hagel · Ort"
     var hl=document.getElementById('hailLegend'); if(!hl) return;
     if(!hailOn){hl.style.display='none';return;}
-    var c=hailCells[0], nm=c?nearestPlace(c[0],c[1]):null;
+    var c=hailCells[0], nm=c?nearestPlace(c[0],c[1]):null;   // c[0],c[1] = Schwerpunkt der Zelle (fuers Label)
     hl.innerHTML='<i class="hailsw"></i>Hagel'+(nm?' · '+nm:'')+(hailCells.length>1?' +'+(hailCells.length-1):'');
     hl.title=c?'Antippen: Karte springt zur Hagelzelle ('+c[2]+'%)':'';
     hl.style.display='';
@@ -1202,8 +1202,9 @@
     if(!hailCells.length) return;
     var c=hailCells[hailCellIdx % hailCells.length];
     hailCellIdx++;
-    setViewAtCrosshair([c[0],c[1]], Math.max(map.getZoom(),10));   // hinspringen (Chip folgt via moveend)
-    var nm=nearestPlace(c[0],c[1]);
+    var jlat=(c.length>4?c[3]:c[0]), jlon=(c.length>4?c[4]:c[1]);   // Sprung zum POH-Maximum (falls vorhanden), sonst Schwerpunkt
+    setViewAtCrosshair([jlat,jlon], Math.max(map.getZoom(),10));    // hinspringen (Chip folgt via moveend)
+    var nm=nearestPlace(c[0],c[1]);                                 // Label weiterhin am Schwerpunkt
     this.innerHTML='<i class="hailsw"></i>Hagel'+(nm?' · '+nm:'')+(hailCells.length>1?' ('+(((hailCellIdx-1)%hailCells.length)+1)+'/'+hailCells.length+')':'');
   };
   function updateHail(){

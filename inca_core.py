@@ -881,7 +881,8 @@ def forecast_latest_precip_asset():
 # Hagel wird DIREKT in die Radarbilder gerendert: dunkle Diagonal-Schraffur ueber den
 # Niederschlagsfarben - unverwechselbar, da alle Volltonfarben der Skala belegt sind.
 HAIL_COLLECTION = os.environ.get("HAIL_COLLECTION", "ch.meteoschweiz.ogd-radar-hail")
-HAIL_POH_MIN = float(os.environ.get("HAIL_POH_MIN", "80"))     # ab dieser POH wird schraffiert
+HAIL_POH_MIN = float(os.environ.get("HAIL_POH_MIN", "80"))     # ab dieser POH: kraeftige Schraffur (Hagel wahrscheinlich)
+HAIL_POH_LOW = float(os.environ.get("HAIL_POH_LOW", "50"))     # ab dieser POH: leichte Schraffur (Hagel moeglich)
 
 
 def hail_assets(limit=28):
@@ -909,23 +910,31 @@ def hail_assets(limit=28):
 def render_hail(h5path, out_png, max_cells=5):
     """Hagel (BZC/POH) -> EIGENES, transparentes Layer-PNG: dunkle Diagonal-Schraffur,
     wo POH >= HAIL_POH_MIN. Rueckgabe: (datetime_utc, max_poh_prozent, zellen).
-    zellen = bis zu max_cells Hagelzellen als (lat, lon, poh_max) - Punkt der hoechsten
-    POH je zusammenhaengender Zelle, groesste zuerst (fuer den Spring-zum-Hagel-Hinweis)."""
+    zellen = bis zu max_cells Hagelzellen als (lat_c, lon_c, poh_max, lat_max, lon_max):
+    Schwerpunkt (lat_c/lon_c) fuer den Ortsnamen, POH-Maximum (lat_max/lon_max) fuer Sprung+Prozent,
+    groesste Zelle zuerst (fuer den Spring-zum-Hagel-Hinweis)."""
     when, poh = radar_grid(h5path)                     # gleiches WGS84-Raster wie das Radar
     # MeteoSchweiz liefert POH als Bruchteil 0.0-1.0 (z.B. 0.71 = 71 %). Auf Prozent bringen,
     # damit der Vergleich mit HAIL_POH_MIN (in %) stimmt.
     a = np.nan_to_num(poh, nan=0.0) * 100.0
     mx = float(np.nanmax(a))
-    mask = a >= HAIL_POH_MIN
+    mask = a >= HAIL_POH_MIN                            # kraeftige Stufe: Hagel wahrscheinlich
+    mask_low = (a >= HAIL_POH_LOW) & (a < HAIL_POH_MIN) # leichte Stufe: Hagel moeglich
     cells = []
-    if mask.any():
+    if mask.any() or mask_low.any():
         h, w = mask.shape
         yy, xx = np.mgrid[0:h, 0:w]
-        hatch = mask & (((xx + yy) % 4) < 2)           # Diagonalstreifen, 2 px breit, Abstand 4
         rgba = np.zeros((h, w, 4), dtype=np.uint8)     # transparent
+        # Leichte Stufe zuerst: spaerliche Diagonalstreifen (schmaler, groesserer Abstand), halbtransparent
+        hatch_low = mask_low & (((xx + yy) % 6) < 1)   # ~17 % Deckung -> dezent
+        rgba[hatch_low] = (72, 0, 34, 150)             # gleiches Weinrot, aber durchscheinend
+        # Kraeftige Stufe darueber: dichte Diagonalstreifen, deckend (ueberschreibt die leichte)
+        hatch = mask & (((xx + yy) % 4) < 2)           # ~50 % Deckung -> klar sichtbar
         rgba[hatch] = (72, 0, 34, 255)                 # sehr dunkles Weinrot - sticht auf jeder Regenfarbe
         Image.fromarray(rgba, "RGBA").save(out_png)
-        # Zusammenhaengende Hagelzellen finden, je Zelle den Punkt der maximalen POH
+        # Zusammenhaengende Hagelzellen finden. Je Zelle:
+        #  - Schwerpunkt (Mitte der Schrafffl\u00e4che) -> fuer den Ortsnamen (beschreibt die Zelle)
+        #  - Punkt der maximalen POH -> fuer den Karten-Sprung + Prozentangabe (dort ist die Gefahr am hoechsten)
         from scipy import ndimage
         lab, n = ndimage.label(mask)
         if n:
@@ -934,8 +943,14 @@ def render_hail(h5path, out_png, max_cells=5):
                 comp = (lab == int(k) + 1)
                 idxs = np.argwhere(comp)
                 vals = a[comp]
+                # POH-Maximum (fuer Sprung + Prozent)
                 iy, ix = idxs[int(np.argmax(vals))]
-                lat = DST_N - (int(iy) + 0.5) * DST_RES
-                lon = DST_W + (int(ix) + 0.5) * DST_RES
-                cells.append((round(lat, 3), round(lon, 3), int(round(float(vals.max())))))
+                lat_mx = DST_N - (int(iy) + 0.5) * DST_RES
+                lon_mx = DST_W + (int(ix) + 0.5) * DST_RES
+                # Schwerpunkt (fuer den Ortsnamen)
+                cy = float(idxs[:, 0].mean()); cx = float(idxs[:, 1].mean())
+                lat_c = DST_N - (cy + 0.5) * DST_RES
+                lon_c = DST_W + (cx + 0.5) * DST_RES
+                cells.append((round(lat_c, 3), round(lon_c, 3), int(round(float(vals.max()))),
+                              round(lat_mx, 3), round(lon_mx, 3)))
     return when, mx, cells
