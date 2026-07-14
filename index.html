@@ -152,6 +152,67 @@
   .dock{position:absolute;left:0;right:0;bottom:0;z-index:500;padding:0 calc(14px + env(safe-area-inset-right)) calc(14px + env(safe-area-inset-bottom)) calc(14px + env(safe-area-inset-left));display:flex;justify-content:center;pointer-events:none}
   .panel{pointer-events:auto;width:100%;max-width:780px;background:var(--panel);backdrop-filter:blur(10px);border:1px solid var(--panel-line);
     border-radius:18px;box-shadow:var(--shadow);padding:12px 16px 14px}
+
+  /* ===== Querformat (nur Handy, body.landscape): Box als schmale rechte Spalte ===== */
+  /* Eigenes, vertikales Innenleben (.ls-body) mit denselben Bedienelementen; das Hochformat-
+     Innenleben wird ausgeblendet. Ein-/Ausklappen animiert die BREITE (statt max-height). */
+  body.landscape .dock{left:auto;top:0;right:0;bottom:0;
+    padding:calc(10px + env(safe-area-inset-top)) calc(10px + env(safe-area-inset-right)) calc(10px + env(safe-area-inset-bottom)) 0;
+    align-items:stretch;justify-content:flex-end}
+  body.landscape .panel{width:165px;max-width:none;height:100%;display:flex;flex-direction:column;
+    padding:10px 12px 10px 24px;border-radius:16px;transition:width .28s ease}
+  body.landscape .panel.collapsed{width:82px;padding-left:24px;padding-right:10px}
+  body.landscape .panel > .collapsible,
+  body.landscape .panel > .row{display:none}                /* Hochformat-Innenleben aus */
+  .ls-body{display:none}                                    /* Querformat-Innenleben nur im landscape */
+  body.landscape .ls-body{display:flex;flex-direction:column;flex:1;min-height:0;overflow:hidden}
+  /* Griff: an der linken Innenkante der Box, vertikal mittig (gehoert zur Box, Zieh-Richtung) */
+  body.landscape .grip{position:absolute;left:2px;top:50%;transform:translateY(-50%);
+    width:5px;height:42px;margin:0;padding:10px 8px;box-sizing:content-box;z-index:10;top:50%}
+  /* Kopf: Ort (darf 2-zeilig umbrechen) + Lupe */
+  .ls-head{display:flex;align-items:flex-start;gap:6px;margin-bottom:8px;flex:none}
+  .ls-head .ort{flex:1;min-width:0;align-items:flex-start}
+  .ls-head .ls-ortname{white-space:normal;line-height:1.2;word-break:break-word;overflow-wrap:anywhere}
+  /* Play + Zeit: ausgeklappt nebeneinander, eingeklappt untereinander (Zeit 2-zeilig) */
+  .ls-playrow{display:flex;align-items:center;gap:9px;margin-bottom:8px;flex:none}
+  .ls-time{display:flex;flex-direction:column;line-height:1.1;font-weight:700}
+  .ls-time .js-time-hm{font-size:18px}
+  .ls-time .js-time-day{font-size:12px;color:var(--muted);font-weight:600}
+  body.landscape .panel.collapsed .ls-playrow{flex-direction:column;gap:6px;align-items:center}
+  body.landscape .panel.collapsed .ls-time{align-items:center;text-align:center}
+  /* Drei Saeulen: Zeitleiste | Legende | Tempo (oben buendig) */
+  .ls-cols{flex:1;display:flex;gap:10px;min-height:0;justify-content:space-between;padding:2px 0}
+  .ls-col{display:flex;flex-direction:column;align-items:center;gap:5px;min-height:0}
+  .ls-lab{font-size:10px;color:var(--muted);line-height:1;height:10px;flex:none}
+  /* Vertikale Zeitleiste = horizontale Track-Struktur um 90 Grad gedreht (gleiche Bausteine).
+     Breite des gedrehten Elements = Hoehe des Wrappers, wird per JS gesetzt (sizeVTracks). */
+  .ls-vwrap{flex:1;position:relative;width:30px;min-height:40px}
+  /* Track (Hoehe 30px) um 90 Grad drehen: nach Rotation wird die 30px-Hoehe zur Breite.
+     Mit origin top-left + left:30px landet die gedrehte Leiste buendig in der 30px-Spalte. */
+  .ls-vtrack{position:absolute;top:0;left:30px;width:var(--vtrack-len,200px);height:30px;
+    transform:rotate(90deg);transform-origin:top left}
+  .ls-vtrack .track{height:30px}
+  .ls-vtrack .daylabel{transform:rotate(-90deg);transform-origin:left top;left:auto}
+  .ls-vtrack input[type=range]{touch-action:none}
+  /* Slider-Daumen im Querformat sichtbar (im Hochformat ist er unsichtbar/overlay) */
+  body.landscape .ls-vtrack input[type=range]{-webkit-appearance:none;appearance:none;background:transparent}
+  body.landscape .ls-vtrack input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;
+    width:18px;height:18px;border-radius:50%;background:var(--green);border:2px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.35)}
+  body.landscape .ls-vtrack input[type=range]::-moz-range-thumb{width:18px;height:18px;border-radius:50%;
+    background:var(--green);border:2px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.35)}
+  /* Legende vertikal, mit Werteskala (gleiche Farben wie horizontal, nur 180deg) */
+  .ls-legend-body{flex:1;display:flex;gap:4px;min-height:0}
+  .ls-legend-bar{width:8px;border-radius:4px;background:linear-gradient(180deg,#2d6ee1,#28b4aa,#5fc850,#e6d746,#f09637,#e13732,#aa196e)}
+  .ls-legend-scale{display:flex;flex-direction:column;justify-content:space-between;font-size:8px;color:var(--muted);padding:1px 0}
+  /* Tempo vertikal: Titel oben, 3 Symbole uebereinander */
+  .ls-tempo{flex-direction:column;height:auto;gap:8px;align-items:center;flex:none}
+  .ls-tempo button{height:28px;line-height:28px;padding:0 5px;border-radius:7px}
+  /* Credits 3-zeilig */
+  .ls-credit{flex:none;font-size:10px;color:var(--muted);line-height:1.6;margin-top:6px}
+  .ls-credit a{color:var(--green-dark);text-decoration:underline;cursor:pointer}
+  .ls-build{opacity:.55;font-variant-numeric:tabular-nums}
+  /* Eingeklappt: Kopf, Legende, Tempo, Credits weg -> Zeitleiste laeuft lang bis unten */
+  body.landscape .panel.collapsed .ls-x{display:none}
   .row{display:flex;align-items:center;gap:14px}
   .play{width:46px;height:46px;flex:none;border-radius:50%;border:none;cursor:pointer;background:var(--green);color:#fff;
     font-size:18px;display:grid;place-items:center;box-shadow:0 3px 10px rgba(118,184,42,.45)}
@@ -223,8 +284,8 @@
   .errbox{max-width:380px;text-align:center;line-height:1.5}
   .spinner{width:34px;height:34px;border:3px solid #c3ccb6;border-top-color:var(--green);border-radius:50%;animation:spin .8s linear infinite;margin:0 auto 12px}
   @keyframes spin{to{transform:rotate(360deg)}}
-  @media (max-width:560px){.bigtime{font-size:18px}
-    .dockhead .ort{font-size:15px}}
+  body.phone .bigtime{font-size:18px}
+  body.phone .dockhead .ort{font-size:15px}
 </style>
 </head>
 <body>
@@ -257,18 +318,18 @@
   <button class="grip" id="grip" aria-label="Box auf-/zuklappen"></button>
   <div class="collapsible" id="collapsible">
     <div class="dockhead">
-      <span class="ort" id="orthead"><span class="live" id="livedot"></span><span id="ortname">Schweiz</span><span class="ort-search" aria-hidden="true">🔍</span></span>
-      <button class="lupe" id="searchBtn" title="Ort suchen">🔍</button>
+      <span class="ort" id="orthead"><span class="live" id="livedot"></span><span id="ortname" class="js-ortname">Schweiz</span><span class="ort-search" aria-hidden="true">🔍</span></span>
+      <button class="lupe js-search" id="searchBtn" title="Ort suchen">🔍</button>
     </div>
   </div>
   <div class="row">
-    <button class="play" id="play" aria-label="Abspielen">▶</button>
+    <button class="play js-play" id="play" aria-label="Abspielen">▶</button>
     <div class="timewrap">
       <div class="timehead"><span class="bigtime" id="bigtime">--:--</span>
         <div class="speed"><button class="speed-lbl" disabled><span class="sp-word">Tempo</span></button><button data-sp="600"><span class="sp-word">langsam</span><span class="sp-icon">🐢</span></button><button data-sp="350" class="on"><span class="sp-word">normal</span><span class="sp-icon">🚶</span></button><button data-sp="180"><span class="sp-word">schnell</span><span class="sp-icon">🐇</span></button></div>
       </div>
-      <div class="track"><div class="ticks" id="ticks"></div><div class="nowline" id="nowline"></div>
-        <input type="range" id="slider" min="0" max="0" value="0" step="1" aria-label="Zeit wählen"></div>
+      <div class="track"><div class="ticks js-ticks" id="ticks"></div><div class="nowline js-nowline" id="nowline"></div>
+        <input type="range" id="slider" class="js-slider" min="0" max="0" value="0" step="1" aria-label="Zeit wählen"></div>
     </div>
   </div>
   <div class="collapsible collapsible-lower">
@@ -278,7 +339,42 @@
       <div class="scalelabels"><span>0.3</span><span>1</span><span>5</span><span>20</span><span>50+</span></div>
       <div class="scale-slim-ends"><span>leicht</span><span>stark</span></div>
     </div>
-    <div class="dockcredit"><span class="credit-txt">© OpenStreetMap, © CARTO · </span><a href="#" id="licLink2">Daten &amp; Lizenzen</a><span class="appver">__BUILDNUM__</span></div>
+    <div class="dockcredit"><span class="credit-txt">© OpenStreetMap, © CARTO · </span><a href="#" id="licLink2" class="js-lic">Daten &amp; Lizenzen</a><span class="appver">__BUILDNUM__</span></div>
+  </div>
+  <div class="ls-body">
+    <div class="ls-head ls-x">
+      <span class="ort"><span class="live"></span><span class="ls-ortname js-ortname">Schweiz</span></span>
+      <button class="lupe js-search" title="Ort suchen">🔍</button>
+    </div>
+    <div class="ls-playrow">
+      <button class="play js-play" aria-label="Abspielen">▶</button>
+      <span class="ls-time"><span class="js-time-day">–</span><span class="js-time-hm">--:--</span></span>
+    </div>
+    <div class="ls-cols">
+      <div class="ls-col ls-col-track">
+        <span class="ls-lab">jetzt</span>
+        <div class="ls-vwrap"><div class="ls-vtrack">
+          <div class="track"><div class="ticks js-ticks"></div><div class="nowline js-nowline"></div>
+            <input type="range" class="js-slider" min="0" max="0" value="0" step="1" aria-label="Zeit wählen"></div>
+        </div></div>
+        <span class="ls-lab">später</span>
+      </div>
+      <div class="ls-col ls-x">
+        <span class="ls-lab">leicht</span>
+        <div class="ls-legend-body"><div class="ls-legend-bar"></div>
+          <div class="ls-legend-scale"><span>0.3</span><span>1</span><span>5</span><span>20</span><span>50+</span></div></div>
+        <span class="ls-lab">stark</span>
+      </div>
+      <div class="ls-col ls-x">
+        <span class="ls-lab">Tempo</span>
+        <div class="speed ls-tempo"><button data-sp="600"><span class="sp-icon">🐢</span></button><button data-sp="350" class="on"><span class="sp-icon">🚶</span></button><button data-sp="180"><span class="sp-icon">🐇</span></button></div>
+      </div>
+    </div>
+    <div class="ls-credit ls-x">
+      <div>© OpenStreetMap, © CARTO</div>
+      <div><a href="#" class="js-lic">Daten &amp; Lizenzen</a></div>
+      <div class="ls-build">__BUILDNUM__</div>
+    </div>
   </div>
 </div></div>
 <div class="loading" id="loading"><div class="errbox" id="loadtext"><div class="spinner"></div>Daten werden geladen…</div></div>
@@ -306,10 +402,17 @@
   [0,60,150,300,600].forEach(function(ms){ setTimeout(setAppHeight, ms); });
   window.addEventListener('load', setAppHeight);
   if(window.visualViewport){ window.visualViewport.addEventListener('resize', setAppHeight); }
-  // Handy (schmaler Bildschirm) frueh erkennen: das Layout (Collapse, Controls) haengt davon ab.
-  if(window.matchMedia && window.matchMedia('(max-width:520px)').matches){
-    document.body.classList.add('phone');
+  // Handy erkennen: die KUERZERE Bildschirmseite ist schmal (<560px). So wird das Handy auch
+  // im Querformat als 'phone' erkannt (dort ist die Hoehe die kurze Seite). Zusaetzlich 'landscape'
+  // setzen, wenn breiter als hoch. Beide Klassen bei jedem Viewport-Wechsel aktualisieren.
+  function updateLayoutClasses(){
+    var w=window.innerWidth, h=window.innerHeight;
+    var shortSide=Math.min(w,h);
+    var isPhone = shortSide<=560;
+    document.body.classList.toggle('phone', isPhone);
+    document.body.classList.toggle('landscape', isPhone && w>h);   // Querformat nur auf dem Handy
   }
+  updateLayoutClasses();
   var SWISS=[46.83,8.23], Z=8;                 // Standard-Zentrum/Zoom (Schweiz)
   var map=L.map('map',{center:SWISS,zoom:Z,minZoom:6,maxZoom:13,zoomControl:false,
     scrollWheelZoom:false,doubleClickZoom:false,touchZoom:'center'}).setView(SWISS,Z);
@@ -329,26 +432,44 @@
   //      sichtbar bleibt, liegt das Fadenkreuz (= "Mitte") in der Mitte des FREIEN Bereichs,
   //      also (Fensterhoehe - Boxhoehe)/2 statt in der Fenstermitte. Alle "Mitte"-Bezuege
   //      (Ortsname, Permalink, Sampling, Hinspringen) gehen ueber diese zwei Helfer. ----
+  function isLandscape(){ return document.body.classList.contains('landscape'); }
   function mapOffsetY(){                          // wie weit die optische Mitte ueber der Fenstermitte liegt (px)
+    if(isLandscape()) return 0;                   // Querformat: Box rechts -> vertikal kein Versatz
     var p=document.querySelector('.panel');
     var h=p?p.getBoundingClientRect().height:0;
     var pad=14;                                   // Dock-Abstand unten
     return Math.round((h+pad)/2);
   }
+  function mapOffsetX(){                          // wie weit die optische Mitte LINKS der Fenstermitte liegt (px)
+    if(!isLandscape()) return 0;                  // nur Querformat: Box rechts verdeckt Karte
+    var p=document.querySelector('.panel');
+    var w=p?p.getBoundingClientRect().width:0;
+    var pad=10;                                   // Dock-Abstand rechts
+    return Math.round((w+pad)/2);
+  }
   function crosshairLatLng(){                      // lat/lng am Fadenkreuz (nicht Fenstermitte)
     var sz=map.getSize();
-    return map.containerPointToLatLng([sz.x/2, sz.y/2 - mapOffsetY()]);
+    return map.containerPointToLatLng([sz.x/2 - mapOffsetX(), sz.y/2 - mapOffsetY()]);
   }
   function setViewAtCrosshair(ll, zoom, opts){    // bringt einen Ort ans Fadenkreuz (statt Fenstermitte)
     _zoomFocus=null;                              // neuer Ort -> Zoom-Fokus zuruecksetzen
     zoom=(zoom==null?map.getZoom():zoom);
-    var pt=map.project(ll, zoom).add([0, mapOffsetY()]);   // Ziel nach unten schieben -> landet am Fadenkreuz
+    var pt=map.project(ll, zoom).add([mapOffsetX(), mapOffsetY()]);   // Ziel Richtung Box schieben -> landet am Fadenkreuz
     map.setView(map.unproject(pt, zoom), zoom, opts);
   }
-  // Fadenkreuz-Symbol vertikal auf die Mitte des freien Bereichs setzen
+  // Fadenkreuz-Symbol auf die Mitte des freien Bereichs setzen (vertikal UND horizontal)
   function placeCrosshair(){
     var ch=document.getElementById('crosshair'); if(!ch)return;
     ch.style.top='calc(50% - '+mapOffsetY()+'px)';
+    ch.style.left='calc(50% - '+mapOffsetX()+'px)';
+  }
+  // Vertikale (rotierte) Zeitleisten: Laenge des gedrehten Elements = Hoehe des Wrappers
+  function sizeVTracks(){
+    document.querySelectorAll('.ls-vwrap').forEach(function(w){
+      var v=w.querySelector('.ls-vtrack'); if(!v) return;
+      var len=Math.max(0,Math.round(w.getBoundingClientRect().height));
+      v.style.setProperty('--vtrack-len', len+'px');
+    });
   }
   // Karten-Controls (Zoom/Standort/Attribution) sitzen unten rechts. Auf schmalen, aber nicht
   // "phone"-Geraeten (z.B. iPad Hochformat) reicht die Box fast ueber die ganze Breite und
@@ -359,6 +480,12 @@
     // Passt eine ~46px breite Control-Spalte rechts NEBEN die Box (mit etwas Luft)?
     // Falls nicht (Handy, iPad Hochformat), Controls ueber die Box heben UND rechtsbuendig
     // mit der Box ausrichten (sonst stehen sie weiter rechts als die Box -> sieht schief aus).
+    if(isLandscape()){
+      // Querformat: Controls unten LINKS NEBEN der Box (am rechten Rand der freien Kartenflaeche)
+      document.documentElement.style.setProperty('--ctllift','0px');
+      document.documentElement.style.setProperty('--ctlright', Math.max(0,Math.round(window.innerWidth-pr.left)+8)+'px');
+      return;
+    }
     var freeRight = window.innerWidth - pr.right;
     var overBox = freeRight < 54;
     var lift = overBox ? Math.round(pr.height + 24) : 0;
@@ -371,8 +498,9 @@
   // die Karte nach dem Drehen die alte Hoehe), dann Fadenkreuz/Controls/Mitte neu setzen.
   function onViewportChange(){
     setAppHeight();                                            // Kartenhoehe frisch aus innerHeight
+    updateLayoutClasses();                                     // phone/landscape bei Drehen aktualisieren
     if(map && map.invalidateSize) map.invalidateSize(false);   // Leaflet-Groesse neu berechnen
-    placeCrosshair(); liftControls();
+    placeCrosshair(); liftControls(); sizeVTracks();
     if(typeof refreshCenter==='function') refreshCenter();
   }
   window.addEventListener('resize', onViewportChange);
@@ -383,7 +511,7 @@
   // BFCache-Wiederherstellung (Zurueck-Navigation / iOS): Karte neu vermessen
   window.addEventListener('pageshow', function(e){ if(e.persisted) onViewportChange(); });
   // initial, sobald die Box gerendert ist (unabhaengig vom Daten-Load)
-  requestAnimationFrame(function(){ requestAnimationFrame(liftControls); });
+  requestAnimationFrame(function(){ requestAnimationFrame(function(){ liftControls(); sizeVTracks(); }); });
   if(document.fonts&&document.fonts.ready) document.fonts.ready.then(liftControls);
 
   // ---- Etappe 2: Box ein-/ausklappen (nur Handy) ----
@@ -392,25 +520,32 @@
   function isPhoneLayout(){ return document.body.classList.contains('phone'); }
   var _preCollapseCenter=null;
   function setCollapsed(on){
-    _preCollapseCenter=crosshairLatLng();                 // Punkt unterm Fadenkreuz VOR der Hoehenaenderung merken
+    _preCollapseCenter=crosshairLatLng();                 // Punkt unterm Fadenkreuz VOR der Aenderung merken
     panelEl.classList.toggle('collapsed', on);
+    requestAnimationFrame(sizeVTracks);                   // Querformat: Zeitleisten-Laenge folgt sofort
     try{ localStorage.setItem('boxCollapsed', on?'1':'0'); localStorage.setItem('boxCollapsedAt', String(Date.now())); }catch(e){}
   }
   function toggleCollapse(){ setCollapsed(!panelEl.classList.contains('collapsed')); }
   if(gripEl){
     // Tippen: umschalten. Ziehen am Griff: Richtung entscheidet (hoch=auf, runter=zu).
-    var gy0=null, gmoved=false;
-    gripEl.addEventListener('touchstart',function(e){ gy0=e.touches[0].clientY; gmoved=false; },{passive:true});
+    var gx0=null, gy0=null, gmoved=false;
+    gripEl.addEventListener('touchstart',function(e){ gx0=e.touches[0].clientX; gy0=e.touches[0].clientY; gmoved=false; },{passive:true});
     gripEl.addEventListener('touchmove',function(e){
       if(gy0===null) return;
-      var dy=e.touches[0].clientY-gy0;
-      if(Math.abs(dy)>18){                                   // klare Wisch-Geste erkannt
+      var dx=e.touches[0].clientX-gx0, dy=e.touches[0].clientY-gy0;
+      if(isLandscape()){
+        if(Math.abs(dx)>18){                                 // Querformat: horizontal wischen
+          gmoved=true;
+          setCollapsed(dx>0);                                // rechts -> einklappen, links -> ausklappen
+          gx0=gy0=null;                                      // nur einmal pro Geste ausloesen
+        }
+      } else if(Math.abs(dy)>18){                            // Hochformat: vertikal wischen
         gmoved=true;
         setCollapsed(dy>0);                                  // runter -> einklappen, hoch -> ausklappen
-        gy0=null;                                            // nur einmal pro Geste ausloesen
+        gx0=gy0=null;
       }
     },{passive:true});
-    gripEl.addEventListener('touchend',function(){ gy0=null; });
+    gripEl.addEventListener('touchend',function(){ gx0=gy0=null; });
     // Klick (auch als Fallback fuer Maus/kurzes Tippen ohne nennenswerte Bewegung)
     gripEl.addEventListener('click',function(e){ if(!gmoved) toggleCollapse(); gmoved=false; });
   }
@@ -418,8 +553,8 @@
   // UND die Karte so verschieben, dass der Punkt, der vorher unterm Fadenkreuz lag, wieder dort liegt
   // (sonst springt das Zentrum beim Klappen hoch/runter). Am transitionend, nicht waehrend der Animation.
   if(panelEl) panelEl.addEventListener('transitionend', function(e){
-    if(e.propertyName!=='max-height') return;
-    placeCrosshair(); liftControls();
+    if(e.propertyName!=='max-height' && e.propertyName!=='width') return;
+    placeCrosshair(); liftControls(); sizeVTracks();
     if(_preCollapseCenter){ setViewAtCrosshair(_preCollapseCenter, map.getZoom(), {animate:false}); _preCollapseCenter=null; }
     if(typeof refreshCenter==='function') refreshCenter();
   });
@@ -439,9 +574,11 @@
   if(wantCollapsed){
     var _cs=panelEl.querySelectorAll('.collapsible');
     for(var _i=0;_i<_cs.length;_i++) _cs[_i].style.transition='none';   // Animation kurz aus
+    panelEl.style.transition='none';                      // auch Breiten-Transition (Querformat)
     panelEl.classList.add('collapsed');
     void panelEl.offsetHeight;                            // Reflow erzwingen
     for(var _j=0;_j<_cs.length;_j++) _cs[_j].style.transition='';       // Transition wieder an
+    panelEl.style.transition='';
   }
   // Zoom immer um das Fadenkreuz (Mitte des freien Bereichs). setZoomAround verschiebt in EINEM
   // Schritt so, dass der Punkt unterm Fadenkreuz fest bleibt - kein Nachrucken wie bei zoomend-Korrektur.
@@ -772,7 +909,7 @@
   function openSearch(){SBOX.style.display='block';SIN.focus();SIN.select();}
   function closeSearch(){SBOX.style.display='none';SRES.innerHTML='';}
   function gotoPlace(lat,lng){closeSearch();SIN.value='';setViewAtCrosshair([lat,lng],Math.max(map.getZoom(),12));}
-  document.getElementById('searchBtn').onclick=function(){SBOX.style.display==='block'?closeSearch():openSearch();};
+  document.querySelectorAll('.js-search').forEach(function(b){b.onclick=function(){SBOX.style.display==='block'?closeSearch():openSearch();};});
   // Klick auf den Ortsnamen in der Kopfzeile -> Suche oeffnen (intuitiv)
   var ORTHEAD=document.getElementById('orthead');
   if(ORTHEAD){ ORTHEAD.style.cursor='pointer'; ORTHEAD.title='Ort suchen'; ORTHEAD.addEventListener('click',openSearch); }
@@ -857,9 +994,10 @@
   function show(i){                                      // Frame i zeigen, Rest ausblenden
     if(!frames.length)return;
     i=Math.max(0,Math.min(frames.length-1,i));
-    idx=i;document.getElementById('slider').value=i;      // Zustand/Zeit/Slider sofort setzen
+    idx=i;
+    document.querySelectorAll('.js-slider').forEach(function(sl){sl.value=i;});  // alle Slider synchron
     var _d=new Date(frames[i].time);
-    document.getElementById('bigtime').textContent=dayLabel(_d)+' '+hm(_d);
+    setTimeLabels(dayLabel(_d), hm(_d));                  // Zeit in alle Anzeigen (Hoch einzeilig, Quer zweizeilig)
     document.querySelectorAll('.tick').forEach(function(t,j){t.classList.toggle('active',j===i)});
     if(frames[i+1])imgOf(i+1);if(frames[i-1])imgOf(i-1);  // Nachbarn vorladen
     whenReady(i,function(){                                // Bild erst einblenden, wenn geladen -> altes bleibt bis dahin sichtbar
@@ -880,30 +1018,43 @@
     var next=idx+1>=frames.length?loopStart:idx+1;
     whenReady(next,function(){ show(next); if(playing)schedule(); });
   }
-  function play(){playing=true;document.getElementById('play').textContent='❚❚';schedule();}
-  function pause(){playing=false;document.getElementById('play').textContent='▶';clearTimeout(timer)}
-  document.getElementById('play').onclick=function(){playing?pause():play()};
+  function setTimeLabels(day, time){
+    // Hochformat: einzeilig "Fr 14:20"; Querformat-Label (falls vorhanden): zweizeilig
+    var one=document.getElementById('bigtime'); if(one) one.textContent=day+' '+time;
+    document.querySelectorAll('.js-time-day').forEach(function(e){e.textContent=day;});
+    document.querySelectorAll('.js-time-hm').forEach(function(e){e.textContent=time;});
+  }
+  function setPlayIcon(){var s=playing?'❚❚':'▶';document.querySelectorAll('.js-play').forEach(function(b){b.textContent=s;});}
+  function play(){playing=true;setPlayIcon();schedule();}
+  function pause(){playing=false;setPlayIcon();clearTimeout(timer)}
+  function bindPlay(btn){btn.onclick=function(){playing?pause():play()};}
+  document.querySelectorAll('.js-play').forEach(bindPlay);
   var slider=document.getElementById('slider');
-  slider.oninput=function(){pause();show(+this.value)};
+  function bindSlider(sl){sl.oninput=function(){pause();show(+this.value)};}
+  document.querySelectorAll('.js-slider').forEach(bindSlider);
   document.querySelectorAll('.speed button[data-sp]').forEach(function(btn){btn.onclick=function(){
-    speed=+this.dataset.sp;document.querySelectorAll('.speed button[data-sp]').forEach(function(x){x.classList.remove('on')});
-    this.classList.add('on');if(playing)play();};});
+    speed=+this.dataset.sp; var sp=this.dataset.sp;
+    document.querySelectorAll('.speed button[data-sp]').forEach(function(x){x.classList.toggle('on',x.dataset.sp===sp)});
+    if(playing)play();};});
 
   function buildTimeline(){
-    var tk=document.getElementById('ticks');tk.innerHTML='';
-    frames.forEach(function(fr){var d=document.createElement('div');d.className='tick '+(fr.kind==='forecast'?'fc':'past');tk.appendChild(d);});
-    // Tagesgrenzen: bei jedem Wechsel des lokalen Kalendertags eine Linie + Wochentags-Kuerzel
-    var ab=['So','Mo','Di','Mi','Do','Fr','Sa'];
-    for(var k=1;k<frames.length;k++){
-      var p=new Date(frames[k-1].time),q=new Date(frames[k].time);
-      if(p.getDate()!==q.getDate()||p.getMonth()!==q.getMonth()||p.getFullYear()!==q.getFullYear()){
-        var pos=(k/frames.length*100);
-        var ln=document.createElement('div');ln.className='dayline';ln.style.left=pos+'%';tk.appendChild(ln);
-        var lb=document.createElement('div');lb.className='daylabel';lb.style.left=pos+'%';lb.textContent=ab[q.getDay()];tk.appendChild(lb);
+    // In ALLE Zeitleisten rendern (Hochformat horizontal + Querformat vertikal/rotiert)
+    document.querySelectorAll('.js-ticks').forEach(function(tk){
+      tk.innerHTML='';
+      frames.forEach(function(fr){var d=document.createElement('div');d.className='tick '+(fr.kind==='forecast'?'fc':'past');tk.appendChild(d);});
+      // Tagesgrenzen: bei jedem Wechsel des lokalen Kalendertags eine Linie + Wochentags-Kuerzel
+      var ab=['So','Mo','Di','Mi','Do','Fr','Sa'];
+      for(var k=1;k<frames.length;k++){
+        var p=new Date(frames[k-1].time),q=new Date(frames[k].time);
+        if(p.getDate()!==q.getDate()||p.getMonth()!==q.getMonth()||p.getFullYear()!==q.getFullYear()){
+          var pos=(k/frames.length*100);
+          var ln=document.createElement('div');ln.className='dayline';ln.style.left=pos+'%';tk.appendChild(ln);
+          var lb=document.createElement('div');lb.className='daylabel';lb.style.left=pos+'%';lb.textContent=ab[q.getDay()];tk.appendChild(lb);
+        }
       }
-    }
-    document.getElementById('nowline').style.left=((nowIdx+1)/frames.length*100)+'%';
-    slider.max=frames.length-1;
+    });
+    document.querySelectorAll('.js-nowline').forEach(function(n){n.style.left=((nowIdx+1)/frames.length*100)+'%';});
+    document.querySelectorAll('.js-slider').forEach(function(s){s.max=frames.length-1;});
   }
   // Manifest anwenden: Overlays neu aufbauen, Zeitleiste setzen, Start waehlen
   function apply(data){
@@ -1023,7 +1174,7 @@
     if(!selLatLng) return;
     var loc='';                                              // Ortsname = exakte Rueckwaerts-Geokodierung der Kartenmitte
     if(rgeo.key===keyFor(selLatLng)){ loc = rgeo.name || (rgeo.pending?'…':''); }
-    var oh=document.getElementById('ortname'); if(oh) oh.textContent = loc || 'Schweiz';
+    document.querySelectorAll('.js-ortname').forEach(function(oh){oh.textContent = loc || 'Schweiz';});
   }
   map.on('click',function(e){ setViewAtCrosshair(e.latlng); });          // auf den getippten Punkt zentrieren (Fadenkreuz)
 
@@ -1069,7 +1220,7 @@
   // -> per Delegation abfangen. Spart einen eigenen Button in der Kopfzeile.
   document.addEventListener('click',function(e){
     var t=e.target;
-    if(t && (t.id==='licLink' || t.id==='licLink2')){ e.preventDefault(); LICBOX.classList.add('open'); }
+    if(t && (t.id==='licLink' || t.id==='licLink2' || (t.classList&&t.classList.contains('js-lic')))){ e.preventDefault(); LICBOX.classList.add('open'); }
   });
   document.getElementById('licClose').onclick=function(){LICBOX.classList.remove('open');};
   LICBOX.onclick=function(e){ if(e.target===LICBOX) LICBOX.classList.remove('open'); };
