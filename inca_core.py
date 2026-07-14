@@ -912,7 +912,9 @@ def render_hail(h5path, out_png, max_cells=5):
     zellen = bis zu max_cells Hagelzellen als (lat, lon, poh_max) - Punkt der hoechsten
     POH je zusammenhaengender Zelle, groesste zuerst (fuer den Spring-zum-Hagel-Hinweis)."""
     when, poh = radar_grid(h5path)                     # gleiches WGS84-Raster wie das Radar
-    a = np.nan_to_num(poh, nan=0.0)
+    # MeteoSchweiz liefert POH als Bruchteil 0.0-1.0 (z.B. 0.71 = 71 %). Auf Prozent bringen,
+    # damit der Vergleich mit HAIL_POH_MIN (in %) stimmt.
+    a = np.nan_to_num(poh, nan=0.0) * 100.0
     mx = float(np.nanmax(a))
     mask = a >= HAIL_POH_MIN
     cells = []
@@ -937,63 +939,3 @@ def render_hail(h5path, out_png, max_cells=5):
                 lon = DST_W + (int(ix) + 0.5) * DST_RES
                 cells.append((round(lat, 3), round(lon, 3), int(round(float(vals.max())))))
     return when, mx, cells
-
-
-def hail_debug(n_files=2):
-    """DIAGNOSE (temporaer): laedt bis zu n_files echte BZC/POH-Dateien und schreibt ihre
-    HDF5-Struktur, Gain/Offset, Roh- und skalierte Wertespannen ins Log. Aendert nichts am
-    normalen Verhalten. Aufruf aus build.py, dann Log ansehen und wieder entfernen."""
-    print("=== HAIL_DEBUG START ===")
-    try:
-        hmap = hail_assets(n_files)
-    except Exception as e:
-        print("  hail_assets Exception:", repr(e)); print("=== HAIL_DEBUG ENDE ==="); return
-    print(f"  hail_assets lieferte {len(hmap)} Eintraege")
-    if not hmap:
-        print("  -> LEER. hail_assets findet keine Dateien."); print("=== HAIL_DEBUG ENDE ==="); return
-    import tempfile as _tf
-    shown = 0
-    for t, href in sorted(hmap.items(), reverse=True):
-        if shown >= n_files: break
-        print(f"  --- Datei fuer Zeit {t.isoformat()} ---")
-        print(f"      href: {href}")
-        try:
-            p_ = download(href, os.path.join(_tf.gettempdir(), "hdbg.h5"))
-        except Exception as e:
-            print("      download Exception:", repr(e)); continue
-        try:
-            with h5py.File(p_, "r") as f:
-                # komplette Gruppen-/Dataset-Struktur (2 Ebenen)
-                def _walk(g, pre=""):
-                    for k in g.keys():
-                        it = g[k]
-                        if hasattr(it, "keys"):
-                            attrs = dict(it.attrs)
-                            qty = attrs.get("quantity")
-                            qty = qty.decode() if isinstance(qty, bytes) else qty
-                            print(f"      {pre}{k}/  {('quantity='+str(qty)) if qty else ''}")
-                            if pre.count("  ") < 2:
-                                _walk(it, pre + "  ")
-                        else:
-                            print(f"      {pre}{k}  shape={getattr(it,'shape',None)} dtype={getattr(it,'dtype',None)}")
-                _walk(f)
-                # what-Attribute des vermuteten Datensatzes
-                for path in ["dataset1/data1/what", "dataset1/what", "what"]:
-                    if path in f:
-                        aw = dict(f[path].attrs)
-                        clean = {kk:(vv.decode() if isinstance(vv,bytes) else vv) for kk,vv in aw.items()}
-                        print(f"      attrs[{path}]: {clean}")
-                # Rohwert-Spanne des Standard-Pfads
-                if "dataset1/data1/data" in f:
-                    raw = f["dataset1/data1/data"][:]
-                    import numpy as _np
-                    print(f"      ROH dataset1/data1/data: min={_np.nanmin(raw)} max={_np.nanmax(raw)} "
-                          f"uniq={_np.unique(raw)[:8]}{'...' if raw.size and _np.unique(raw).size>8 else ''}")
-                    w = dict(f["dataset1/data1/what"].attrs) if "dataset1/data1/what" in f else {}
-                    g_ = float(w.get("gain",1.0)); o_ = float(w.get("offset",0.0))
-                    scaled = raw.astype("float64")*g_+o_
-                    print(f"      SKALIERT (gain={g_}, offset={o_}): min={_np.nanmin(scaled)} max={_np.nanmax(scaled)}")
-        except Exception as e:
-            print("      HDF5-Analyse Exception:", repr(e))
-        shown += 1
-    print("=== HAIL_DEBUG ENDE ===")
