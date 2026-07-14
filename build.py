@@ -206,6 +206,10 @@ def build(local_radar=None, local_fc=None, local_icon_dir=None):
                 for i, src in ex.map(_dl, list(enumerate(assets))):
                     src_by_i[i] = src
         # Hagel (POH/BZC, gleicher 5-Min-Takt) passend zu den Radarzeiten laden
+        try:
+            c.hail_debug(2)                                # DIAGNOSE (temporaer) - danach wieder entfernen
+        except Exception as _e:
+            print("  hail_debug Fehler:", _e)
         hail_by_t = {}
         if not local_radar:
             try:
