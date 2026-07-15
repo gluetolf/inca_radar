@@ -1007,6 +1007,7 @@
       updateHail();                                        // Hagel-Layer synchron zum sichtbaren Frame
     });
     updateReadout();
+    updateHailHint();                                     // Hinweis-Text folgt dem Frame sofort (unabhaengig vom Bild-Load)
   }
   function frameDur(i){                                   // Anzeigedauer ~ realer Zeitabstand
     var j=i+1; if(j>=frames.length) return speed;         // (5 Min = 1x, 15 Min = 3x); Schleifenende: 1x
@@ -1080,7 +1081,7 @@
         hailLayer._hailUrl=Object.values(hailFiles)[0];
       }
     } else if(hailLayer){ hailLayer.setOpacity(0); }
-    hailCells=(hailOn && data.hail.cells)?data.hail.cells:[]; hailCellIdx=0;
+    hailCellsByT=(hailOn && data.hail.cells_by_t)?data.hail.cells_by_t:{}; hailCells=[]; hailCellIdx=0;
     hailHint();
     nowMs = data.now? new Date(data.now).getTime() : new Date(frames[frames.length-1].time).getTime();
     nowIdx=0;for(var i=0;i<frames.length;i++){if(frames[i].kind==='radar')nowIdx=i;}   // letztes Radarbild = "jetzt"
@@ -1181,7 +1182,7 @@
   // ---- Hagel-Layer (POH, eigene h_*.png je Radarzeit) ----
   // Automatisch AKTIV, sobald irgendwo POH >= 80 % (etablierte "Hagel am Boden"-Schwelle).
   // Als separater Layer gebaut, damit er spaeter auch manuell schaltbar gemacht werden kann.
-  var hailFiles={}, hailLayer=null, hailOn=false, hailCells=[], hailCellIdx=0;
+  var hailFiles={}, hailLayer=null, hailOn=false, hailCells=[], hailCellsByT={}, hailCellIdx=0;
   function nearestPlace(lat,lon){                       // naechster Ortsname (fuer den Hagel-Hinweis)
     var best=null,bd=1e9,co=Math.cos(lat*Math.PI/180);
     function scan(arr){for(var i=0;i<arr.length;i++){var p=arr[i];
@@ -1190,9 +1191,9 @@
     scan(CITIES); if(window.PLACES)scan(window.PLACES);
     return (bd<0.04)?best:null;                         // ~20 km Umkreis, sonst kein Name
   }
-  function hailHint(){                                  // Legende -> klickbarer Hinweis "Hagel · Ort"
+  function hailHint(){                                  // fester Hinweis unten in der Box, Inhalt folgt dem Frame
     var hl=document.getElementById('hailLegend'); if(!hl) return;
-    if(!hailOn){hl.style.display='none';return;}
+    if(!hailOn || !hailCells.length){hl.style.display='none';return;}   // kein Hagel in DIESEM Frame -> aus
     var c=hailCells[0], nm=c?nearestPlace(c[0],c[1]):null;   // c[0],c[1] = Schwerpunkt der Zelle (fuers Label)
     hl.innerHTML='<i class="hailsw"></i>Hagel'+(nm?' · '+nm:'')+(hailCells.length>1?' +'+(hailCells.length-1):'');
     hl.title=c?'Antippen: Karte springt zur Hagelzelle ('+c[2]+'%)':'';
@@ -1213,6 +1214,11 @@
     var u=(hailOn && f && f.kind==='radar') ? hailFiles[f.time] : null;
     if(u){ if(hailLayer._hailUrl!==u){ hailLayer.setUrl(u); hailLayer._hailUrl=u; } hailLayer.setOpacity(1); }
     else hailLayer.setOpacity(0);
+  }
+  function updateHailHint(){                              // Hinweis-Inhalt folgt dem Frame (unabhaengig vom Bild-Load)
+    var f=frames[idx];
+    var cellsNow=(hailOn && f && f.kind==='radar' && hailCellsByT[f.time]) ? hailCellsByT[f.time] : [];
+    if(cellsNow!==hailCells){ hailCells=cellsNow; hailCellIdx=0; hailHint(); }
   }
 
   // Lizenz-/Datenquellen-Box

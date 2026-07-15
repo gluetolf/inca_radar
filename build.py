@@ -180,7 +180,7 @@ def build(local_radar=None, local_fc=None, local_icon_dir=None):
     last_radar = None
     hail_max_all = 0.0
     hail_files = {}
-    hail_cells = []
+    hail_cells_by_t = {}
     tmp = tempfile.mkdtemp(prefix="inca-")
 
     # ---- Radar: Vergangenheit -> jetzt ----
@@ -206,6 +206,10 @@ def build(local_radar=None, local_fc=None, local_icon_dir=None):
                 for i, src in ex.map(_dl, list(enumerate(assets))):
                     src_by_i[i] = src
         # Hagel (POH/BZC, gleicher 5-Min-Takt) passend zu den Radarzeiten laden
+        try:
+            c.hail_debug(2)                                # DIAGNOSE (temporaer) - danach wieder entfernen
+        except Exception as _e:
+            print("  hail_debug Fehler:", _e)
         hail_by_t = {}
         if not local_radar:
             try:
@@ -237,7 +241,7 @@ def build(local_radar=None, local_fc=None, local_icon_dir=None):
                 print("  Radarbild uebersprungen:", e)
         # Hagel als EIGENE Layer-Bilder rendern (h_*.png, gleiche 5-Min-Zeiten wie das Radar).
         hail_files = {}
-        hail_cells = []
+        hail_cells_by_t = {}                               # Zellen PRO Zeit (Hinweis folgt dem Frame)
         radar_times = {}                                   # nur zu Radarzeiten vorhandene Hagelbilder anbieten
         for _w, _fn, _mx in rendered:
             radar_times[_w] = True
@@ -249,7 +253,7 @@ def build(local_radar=None, local_fc=None, local_icon_dir=None):
                 _hw, _hmx, _hcells = c.render_hail(_hp, _tmp)
                 hail_max_all = max(hail_max_all, _hmx)
                 if _hcells:
-                    hail_cells = _hcells                       # sortierte Zeiten -> am Ende die neuesten Zellen
+                    hail_cells_by_t[_t.isoformat()] = [list(c_) for c_ in _hcells]   # Zellen dieses Zeitpunkts
                 if os.path.exists(_tmp):                   # nur geschrieben, wenn Schraffur vorhanden
                     _hfn = "h_" + _t.strftime("%Y%m%dT%H%MZ") + ".png"
                     os.replace(_tmp, os.path.join(OUT, _hfn))
@@ -479,7 +483,7 @@ def build(local_radar=None, local_fc=None, local_icon_dir=None):
         "now": now.isoformat() if now else None,
         "v": int(dt.datetime.now(dt.timezone.utc).timestamp()),   # Cache-Buster pro Build
         "hail": {"max": round(hail_max_all), "files": hail_files,
-                 "cells": [list(c_) for c_ in hail_cells]},   # neueste Hagelzellen [lat, lon, POH%] fuer den Spring-Hinweis
+                 "cells_by_t": hail_cells_by_t},   # Hagelzellen PRO Zeit: [lat_c,lon_c,POH%,lat_max,lon_max]; Hinweis folgt dem Frame
         "frames": frames,
     }
     json.dump(manifest, open(os.path.join(OUT, "frames.json"), "w"))
