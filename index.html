@@ -174,12 +174,12 @@
   .ls-head .ort{flex:1;min-width:0;align-items:flex-start}
   .ls-head .ls-ortname{white-space:normal;line-height:1.2;word-break:break-word;overflow-wrap:anywhere}
   /* Play + Zeit: ausgeklappt nebeneinander, eingeklappt untereinander (Zeit 2-zeilig) */
-  .ls-playrow{display:flex;align-items:center;gap:9px;margin-bottom:8px;flex:none}
-  .ls-time{display:flex;flex-direction:column;line-height:1.1;font-weight:700}
-  .ls-time .js-time-hm{font-size:18px}
-  .ls-time .js-time-day{font-size:12px;color:var(--muted);font-weight:600}
+  .ls-playrow{display:flex;align-items:center;gap:7px;margin-bottom:8px;flex:none}
+  .ls-time{display:flex;flex-direction:column;line-height:1.1;font-weight:700;min-width:0;flex:1}
+  .ls-time .js-time-hm{font-size:16px;white-space:nowrap;letter-spacing:-0.3px}
+  .ls-time .js-time-day{font-size:12px;color:var(--muted);font-weight:600;white-space:nowrap}
   body.landscape .panel.collapsed .ls-playrow{flex-direction:column;gap:6px;align-items:center}
-  body.landscape .panel.collapsed .ls-time{align-items:center;text-align:center}
+  body.landscape .panel.collapsed .ls-time{align-items:center;text-align:center;flex:none}
   /* Drei Saeulen: Zeitleiste | Legende | Tempo (oben buendig) */
   .ls-cols{flex:1;display:flex;gap:10px;min-height:0;justify-content:space-between;padding:2px 0}
   .ls-col{display:flex;flex-direction:column;align-items:center;gap:5px;min-height:0}
@@ -401,7 +401,12 @@
   // iPad/iOS meldet die korrekte Hoehe beim Laden oft erst verzoegert -> mehrfach nachsetzen.
   [0,60,150,300,600].forEach(function(ms){ setTimeout(setAppHeight, ms); });
   window.addEventListener('load', setAppHeight);
-  if(window.visualViewport){ window.visualViewport.addEventListener('resize', setAppHeight); }
+  if(window.visualViewport){ window.visualViewport.addEventListener('resize', function(){
+    setAppHeight();
+    if(map && map.invalidateSize) map.invalidateSize(false);
+    // Adresszeile ein-/ausblenden aendert die Hoehe -> rotierte Zeitleiste NACH Layout-Update neu vermessen
+    requestAnimationFrame(function(){ if(typeof sizeVTracks==='function') sizeVTracks(); });
+  }); }
   // Handy erkennen: die KUERZERE Bildschirmseite ist schmal (<560px). So wird das Handy auch
   // im Querformat als 'phone' erkannt (dort ist die Hoehe die kurze Seite). Zusaetzlich 'landscape'
   // setzen, wenn breiter als hoch. Beide Klassen bei jedem Viewport-Wechsel aktualisieren.
