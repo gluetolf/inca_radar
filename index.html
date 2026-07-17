@@ -196,14 +196,21 @@
   .ls-vtrack input[type=range]{touch-action:none}
   /* Slider-Daumen im Querformat sichtbar (im Hochformat ist er unsichtbar/overlay) */
   /* Trefferflaeche breiter als der 30px-Balken (mittig, unsichtbarer Ueberstand) -> Finger trifft leichter */
-  /* Querformat: nativer Slider unsichtbar (kein grauer Balken), aber breite Trefferflaeche (44px)
-     zum Ziehen. Die aktuelle Position zeigt der hervorgehobene aktive Strich (.tick.active). */
+  /* Querformat: nativer Slider komplett unsichtbar (opacity:0 UND transparente Thumb/Track-Teile,
+     falls ein Browser opacity am Thumb ignoriert -> kein grauer Balken). Breite Trefferflaeche (44px). */
   body.landscape .ls-vtrack input[type=range]{-webkit-appearance:none;appearance:none;background:transparent;opacity:0;top:-7px;bottom:auto;height:44px}
-  body.landscape .ls-vtrack input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:16px;height:44px;border:none}
-  body.landscape .ls-vtrack input[type=range]::-moz-range-thumb{width:16px;height:44px;border:none}
-  /* Aktueller Frame = kraeftiger gruener Balken quer ueber die volle Leistenbreite -> Position klar sichtbar */
-  body.landscape .ls-vtrack .tick.active{height:30px;background:var(--green);position:relative;z-index:3;
-    border-radius:3px;box-shadow:0 0 0 1.5px #fff,0 1px 4px rgba(0,0,0,.35)}
+  body.landscape .ls-vtrack input[type=range]::-webkit-slider-runnable-track{background:transparent;border:none}
+  body.landscape .ls-vtrack input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:44px;height:44px;background:transparent;border:none}
+  body.landscape .ls-vtrack input[type=range]::-moz-range-track{background:transparent;border:none}
+  body.landscape .ls-vtrack input[type=range]::-moz-range-thumb{width:44px;height:44px;background:transparent;border:none}
+  /* Aktueller Frame: kein Balken/keine Linie mehr (der Punkt zeigt die Position) -> Strich normal hoch */
+  body.landscape .ls-vtrack .tick.active{height:6px}
+  /* Positions-Punkt: gruener Kreis, per JS auf den aktuellen Strich gesetzt. Liegt IM Track (rotiert mit),
+     ein Kreis bleibt rotiert ein Kreis. top:50% = mittig auf dem Balken, left = Frame-Position. */
+  .ls-vdot{position:absolute;top:50%;left:0;width:15px;height:15px;border-radius:50%;
+    background:var(--green);border:2.5px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.45);
+    transform:translate(-50%,-50%);pointer-events:none;z-index:5;display:none}
+  body.landscape .ls-vdot{display:block}
   /* Legende vertikal, mit Werteskala (gleiche Farben wie horizontal, nur 180deg) */
   .ls-legend-body{flex:1;display:flex;gap:4px;min-height:0}
   .ls-legend-bar{width:8px;border-radius:4px;background:linear-gradient(180deg,#2d6ee1,#28b4aa,#5fc850,#e6d746,#f09637,#e13732,#aa196e)}
@@ -373,6 +380,7 @@
         <span class="ls-lab">jetzt</span>
         <div class="ls-vwrap"><div class="ls-vtrack">
           <div class="track"><div class="ticks js-ticks"></div><div class="nowline js-nowline"></div>
+            <div class="ls-vdot js-vdot"></div>
             <input type="range" class="js-slider" min="0" max="0" value="0" step="1" aria-label="Zeit wählen"></div>
         </div></div>
         <span class="ls-lab">später</span>
@@ -1029,6 +1037,9 @@
     document.querySelectorAll('.js-ticks').forEach(function(tk){       // aktive Markierung JE Zeitleiste (Hoch- UND Querformat)
       var tks=tk.querySelectorAll('.tick');
       for(var j=0;j<tks.length;j++) tks[j].classList.toggle('active', j===i);
+    });
+    document.querySelectorAll('.js-vdot').forEach(function(d){         // Positions-Punkt (Querformat) auf die Mitte des aktuellen Strichs
+      d.style.left=((i+0.5)/frames.length*100)+'%';
     });
     if(frames[i+1])imgOf(i+1);if(frames[i-1])imgOf(i-1);  // Nachbarn vorladen
     whenReady(i,function(){                                // Bild erst einblenden, wenn geladen -> altes bleibt bis dahin sichtbar
