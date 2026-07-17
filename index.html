@@ -196,11 +196,14 @@
   .ls-vtrack input[type=range]{touch-action:none}
   /* Slider-Daumen im Querformat sichtbar (im Hochformat ist er unsichtbar/overlay) */
   /* Trefferflaeche breiter als der 30px-Balken (mittig, unsichtbarer Ueberstand) -> Finger trifft leichter */
-  body.landscape .ls-vtrack input[type=range]{-webkit-appearance:none;appearance:none;background:transparent;top:-7px;bottom:auto;height:44px}
-  body.landscape .ls-vtrack input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;
-    width:18px;height:18px;border-radius:50%;background:var(--green);border:2px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.35)}
-  body.landscape .ls-vtrack input[type=range]::-moz-range-thumb{width:18px;height:18px;border-radius:50%;
-    background:var(--green);border:2px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.35)}
+  /* Querformat: nativer Slider unsichtbar (kein grauer Balken), aber breite Trefferflaeche (44px)
+     zum Ziehen. Die aktuelle Position zeigt der hervorgehobene aktive Strich (.tick.active). */
+  body.landscape .ls-vtrack input[type=range]{-webkit-appearance:none;appearance:none;background:transparent;opacity:0;top:-7px;bottom:auto;height:44px}
+  body.landscape .ls-vtrack input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:16px;height:44px;border:none}
+  body.landscape .ls-vtrack input[type=range]::-moz-range-thumb{width:16px;height:44px;border:none}
+  /* Aktueller Frame = kraeftiger gruener Balken quer ueber die volle Leistenbreite -> Position klar sichtbar */
+  body.landscape .ls-vtrack .tick.active{height:30px;background:var(--green);position:relative;z-index:3;
+    border-radius:3px;box-shadow:0 0 0 1.5px #fff,0 1px 4px rgba(0,0,0,.35)}
   /* Legende vertikal, mit Werteskala (gleiche Farben wie horizontal, nur 180deg) */
   .ls-legend-body{flex:1;display:flex;gap:4px;min-height:0}
   .ls-legend-bar{width:8px;border-radius:4px;background:linear-gradient(180deg,#2d6ee1,#28b4aa,#5fc850,#e6d746,#f09637,#e13732,#aa196e)}
@@ -209,7 +212,7 @@
   .ls-tempo{flex-direction:column;height:auto;gap:8px;align-items:center;flex:none}
   .ls-tempo button{height:28px;line-height:28px;padding:0 5px;border-radius:7px}
   /* Info-Knopf unten (ersetzt die 3-zeiligen Credits im Querformat) + fixes Overlay */
-  .ls-info-row{flex:none;display:flex;justify-content:center;margin-top:4px}
+  .ls-info-row{flex:none;display:flex;justify-content:center;align-items:center;gap:8px;margin-top:4px}
   .ls-info-btn{width:26px;height:26px;border-radius:50%;border:1px solid var(--panel-line);
     background:transparent;color:var(--muted);font-size:14px;line-height:1;cursor:pointer;
     display:grid;place-items:center;padding:0}
@@ -225,7 +228,7 @@
   .ls-info-pop a{color:var(--green-dark);text-decoration:underline;cursor:pointer}
   .ls-info-close{position:absolute;top:3px;right:6px;border:none;background:transparent;
     color:var(--muted);font-size:16px;line-height:1;cursor:pointer;padding:2px}
-  .ls-build{opacity:.55;font-variant-numeric:tabular-nums;margin-top:4px}
+  .ls-build{opacity:.55;font-variant-numeric:tabular-nums;font-size:10px;color:var(--muted)}
   /* Eingeklappt: Kopf, Legende, Tempo, Credits weg -> Zeitleiste laeuft lang bis unten */
   body.landscape .panel.collapsed .ls-x{display:none}
   .row{display:flex;align-items:center;gap:14px}
@@ -387,6 +390,7 @@
     </div>
     <div class="ls-info-row ls-x">
       <button class="ls-info-btn js-lsinfo" type="button" aria-label="Info & Lizenzen">ⓘ</button>
+      <span class="ls-build">__BUILDNUM__</span>
     </div>
   </div>
 </div></div>
@@ -394,7 +398,6 @@
   <button class="ls-info-close js-lsinfo-close" type="button" aria-label="Schließen">×</button>
   <div>© OpenStreetMap, © CARTO</div>
   <div><a href="#" class="js-lic">Daten &amp; Lizenzen</a></div>
-  <div class="ls-build">__BUILDNUM__</div>
 </div>
 <div class="loading" id="loading"><div class="errbox" id="loadtext"><div class="spinner"></div>Daten werden geladen…</div></div>
 
@@ -1023,7 +1026,10 @@
     document.querySelectorAll('.js-slider').forEach(function(sl){sl.value=i;});  // alle Slider synchron
     var _d=new Date(frames[i].time);
     setTimeLabels(dayLabel(_d), hm(_d));                  // Zeit in alle Anzeigen (Hoch einzeilig, Quer zweizeilig)
-    document.querySelectorAll('.tick').forEach(function(t,j){t.classList.toggle('active',j===i)});
+    document.querySelectorAll('.js-ticks').forEach(function(tk){       // aktive Markierung JE Zeitleiste (Hoch- UND Querformat)
+      var tks=tk.querySelectorAll('.tick');
+      for(var j=0;j<tks.length;j++) tks[j].classList.toggle('active', j===i);
+    });
     if(frames[i+1])imgOf(i+1);if(frames[i-1])imgOf(i-1);  // Nachbarn vorladen
     whenReady(i,function(){                                // Bild erst einblenden, wenn geladen -> altes bleibt bis dahin sichtbar
       if(idx!==i)return;                                   // inzwischen weitergeschaltet -> verwerfen
