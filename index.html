@@ -195,7 +195,8 @@
   .ls-vtrack .daylabel{transform:rotate(-90deg);transform-origin:left top;left:auto}
   .ls-vtrack input[type=range]{touch-action:none}
   /* Slider-Daumen im Querformat sichtbar (im Hochformat ist er unsichtbar/overlay) */
-  body.landscape .ls-vtrack input[type=range]{-webkit-appearance:none;appearance:none;background:transparent}
+  /* Trefferflaeche breiter als der 30px-Balken (mittig, unsichtbarer Ueberstand) -> Finger trifft leichter */
+  body.landscape .ls-vtrack input[type=range]{-webkit-appearance:none;appearance:none;background:transparent;top:-7px;bottom:auto;height:44px}
   body.landscape .ls-vtrack input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;
     width:18px;height:18px;border-radius:50%;background:var(--green);border:2px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.35)}
   body.landscape .ls-vtrack input[type=range]::-moz-range-thumb{width:18px;height:18px;border-radius:50%;
@@ -207,10 +208,24 @@
   /* Tempo vertikal: Titel oben, 3 Symbole uebereinander */
   .ls-tempo{flex-direction:column;height:auto;gap:8px;align-items:center;flex:none}
   .ls-tempo button{height:28px;line-height:28px;padding:0 5px;border-radius:7px}
-  /* Credits 3-zeilig */
-  .ls-credit{flex:none;font-size:10px;color:var(--muted);line-height:1.6;margin-top:6px}
-  .ls-credit a{color:var(--green-dark);text-decoration:underline;cursor:pointer}
-  .ls-build{opacity:.55;font-variant-numeric:tabular-nums}
+  /* Info-Knopf unten (ersetzt die 3-zeiligen Credits im Querformat) + fixes Overlay */
+  .ls-info-row{flex:none;display:flex;justify-content:center;margin-top:4px}
+  .ls-info-btn{width:26px;height:26px;border-radius:50%;border:1px solid var(--panel-line);
+    background:transparent;color:var(--muted);font-size:14px;line-height:1;cursor:pointer;
+    display:grid;place-items:center;padding:0}
+  .ls-info-btn:active{transform:scale(.94)}
+  /* Overlay haengt AUSSERHALB der ls-body (kein overflow-Clip); fixed unten rechts, ueber der Karte */
+  .ls-info-pop{position:fixed;z-index:600;
+    right:calc(12px + env(safe-area-inset-right));
+    bottom:calc(12px + env(safe-area-inset-bottom));
+    max-width:230px;background:var(--panel);backdrop-filter:blur(10px);
+    border:1px solid var(--panel-line);border-radius:12px;box-shadow:var(--shadow);
+    padding:10px 26px 10px 12px;font-size:11px;color:var(--muted);line-height:1.6}
+  .ls-info-pop[hidden]{display:none}
+  .ls-info-pop a{color:var(--green-dark);text-decoration:underline;cursor:pointer}
+  .ls-info-close{position:absolute;top:3px;right:6px;border:none;background:transparent;
+    color:var(--muted);font-size:16px;line-height:1;cursor:pointer;padding:2px}
+  .ls-build{opacity:.55;font-variant-numeric:tabular-nums;margin-top:4px}
   /* Eingeklappt: Kopf, Legende, Tempo, Credits weg -> Zeitleiste laeuft lang bis unten */
   body.landscape .panel.collapsed .ls-x{display:none}
   .row{display:flex;align-items:center;gap:14px}
@@ -370,13 +385,17 @@
         <div class="speed ls-tempo"><button data-sp="600"><span class="sp-icon">🐢</span></button><button data-sp="350" class="on"><span class="sp-icon">🚶</span></button><button data-sp="180"><span class="sp-icon">🐇</span></button></div>
       </div>
     </div>
-    <div class="ls-credit ls-x">
-      <div>© OpenStreetMap, © CARTO</div>
-      <div><a href="#" class="js-lic">Daten &amp; Lizenzen</a></div>
-      <div class="ls-build">__BUILDNUM__</div>
+    <div class="ls-info-row ls-x">
+      <button class="ls-info-btn js-lsinfo" type="button" aria-label="Info & Lizenzen">ⓘ</button>
     </div>
   </div>
 </div></div>
+<div class="ls-info-pop" id="lsInfoPop" hidden>
+  <button class="ls-info-close js-lsinfo-close" type="button" aria-label="Schließen">×</button>
+  <div>© OpenStreetMap, © CARTO</div>
+  <div><a href="#" class="js-lic">Daten &amp; Lizenzen</a></div>
+  <div class="ls-build">__BUILDNUM__</div>
+</div>
 <div class="loading" id="loading"><div class="errbox" id="loadtext"><div class="spinner"></div>Daten werden geladen…</div></div>
 
 <script src="places.js?v=3"></script>
@@ -1237,6 +1256,21 @@
   });
   document.getElementById('licClose').onclick=function(){LICBOX.classList.remove('open');};
   LICBOX.onclick=function(e){ if(e.target===LICBOX) LICBOX.classList.remove('open'); };
+
+  // Querformat: kleiner "i"-Knopf oeffnet/schliesst das Credits-/Lizenz-Overlay (.ls-info-pop).
+  // Das Overlay haengt ausserhalb der ls-body (kein overflow-Clip) und ist position:fixed.
+  (function(){
+    var pop=document.getElementById('lsInfoPop'); if(!pop) return;
+    document.addEventListener('click',function(e){
+      var t=e.target;
+      if(t && t.closest && t.closest('.js-lsinfo')){ e.preventDefault(); pop.hidden=!pop.hidden; return; }
+      if(pop.hidden) return;
+      // Schliessen-Knopf, Lizenz-Link (oeffnet die grosse Box) oder Klick ausserhalb -> Overlay zu
+      if(t && t.closest && (t.closest('.js-lsinfo-close') || t.closest('.js-lic') || !t.closest('.ls-info-pop'))){
+        pop.hidden=true;
+      }
+    });
+  })();
 
   // ---- PWA: Vollbild-Button + Installations-Hinweis ----
   var isStandalone = (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches)
