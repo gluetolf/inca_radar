@@ -196,21 +196,18 @@
   .ls-vtrack input[type=range]{touch-action:none}
   /* Slider-Daumen im Querformat sichtbar (im Hochformat ist er unsichtbar/overlay) */
   /* Trefferflaeche breiter als der 30px-Balken (mittig, unsichtbarer Ueberstand) -> Finger trifft leichter */
-  /* Querformat: nativer Slider komplett unsichtbar (opacity:0 UND transparente Thumb/Track-Teile,
-     falls ein Browser opacity am Thumb ignoriert -> kein grauer Balken). Breite Trefferflaeche (44px). */
-  body.landscape .ls-vtrack input[type=range]{-webkit-appearance:none;appearance:none;background:transparent;opacity:0;top:-7px;bottom:auto;height:44px}
-  body.landscape .ls-vtrack input[type=range]::-webkit-slider-runnable-track{background:transparent;border:none}
+  /* Querformat: nativer Slider unsichtbar; Interaktion laeuft ueber den eigenen Drag-Handler (unten),
+     weil der rotierte native Slider auf Touch nicht zuverlaessig zieht. */
+  body.landscape .ls-vtrack input[type=range]{-webkit-appearance:none;appearance:none;background:transparent;opacity:0;pointer-events:none;top:-7px;bottom:auto;height:44px}
   body.landscape .ls-vtrack input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:44px;height:44px;background:transparent;border:none}
-  body.landscape .ls-vtrack input[type=range]::-moz-range-track{background:transparent;border:none}
   body.landscape .ls-vtrack input[type=range]::-moz-range-thumb{width:44px;height:44px;background:transparent;border:none}
-  /* Aktueller Frame: kein Balken/keine Linie mehr (der Punkt zeigt die Position) -> Strich normal hoch */
-  body.landscape .ls-vtrack .tick.active{height:6px}
-  /* Positions-Punkt: gruener Kreis, per JS auf den aktuellen Strich gesetzt. Liegt IM Track (rotiert mit),
-     ein Kreis bleibt rotiert ein Kreis. top:50% = mittig auf dem Balken, left = Frame-Position. */
-  .ls-vdot{position:absolute;top:50%;left:0;width:15px;height:15px;border-radius:50%;
+  /* Ganze Spalte zieh-/tippbar (Touch-Handler in JS); keine Browser-Geste dazwischen */
+  body.landscape .ls-vwrap{touch-action:none;cursor:pointer}
+  /* Positions-Punkt (EINHEITLICH Hoch- + Querformat): gruener Kreis, per JS auf die Mitte des aktuellen
+     Strichs gesetzt. Liegt IM Track; ein Kreis bleibt auch rotiert ein Kreis. top:50% = mittig auf dem Balken. */
+  .tl-dot{position:absolute;top:50%;left:0;width:15px;height:15px;border-radius:50%;
     background:var(--green);border:2.5px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.45);
-    transform:translate(-50%,-50%);pointer-events:none;z-index:5;display:none}
-  body.landscape .ls-vdot{display:block}
+    transform:translate(-50%,-50%);pointer-events:none;z-index:5}
   /* Legende vertikal, mit Werteskala (gleiche Farben wie horizontal, nur 180deg) */
   .ls-legend-body{flex:1;display:flex;gap:4px;min-height:0}
   .ls-legend-bar{width:8px;border-radius:4px;background:linear-gradient(180deg,#2d6ee1,#28b4aa,#5fc850,#e6d746,#f09637,#e13732,#aa196e)}
@@ -219,7 +216,7 @@
   .ls-tempo{flex-direction:column;height:auto;gap:8px;align-items:center;flex:none}
   .ls-tempo button{height:28px;line-height:28px;padding:0 5px;border-radius:7px}
   /* Info-Knopf unten (ersetzt die 3-zeiligen Credits im Querformat) + fixes Overlay */
-  .ls-info-row{flex:none;display:flex;justify-content:center;align-items:center;gap:8px;margin-top:4px}
+  .ls-info-row{flex:none;display:flex;justify-content:flex-start;align-items:center;gap:8px;margin-top:4px}
   .ls-info-btn{width:26px;height:26px;border-radius:50%;border:1px solid var(--panel-line);
     background:transparent;color:var(--muted);font-size:14px;line-height:1;cursor:pointer;
     display:grid;place-items:center;padding:0}
@@ -252,7 +249,7 @@
   .track{position:relative;height:30px;touch-action:pan-x}
   .ticks{position:absolute;inset:0;display:flex;align-items:center;pointer-events:none}
   .tick{flex:1;height:6px;margin:0 1px;border-radius:3px;background:#cfd6c6;transition:background .2s,height .2s}
-  .tick.past{background:#aab59b}.tick.fc{background:#f0c98a}.tick.active{background:var(--green);height:14px}
+  .tick.past{background:#aab59b}.tick.fc{background:#f0c98a}
   .nowline{position:absolute;top:-3px;bottom:-3px;width:2px;background:var(--green-dark);border-radius:2px;opacity:.6;pointer-events:none}
   .dayline{position:absolute;top:-2px;bottom:-2px;width:1px;background:rgba(0,0,0,.16);pointer-events:none}
   .daylabel{position:absolute;top:-2px;transform:translateX(3px);font-size:9px;font-weight:700;color:var(--muted);line-height:1;pointer-events:none;white-space:nowrap}
@@ -354,6 +351,7 @@
         <div class="speed"><button class="speed-lbl" disabled><span class="sp-word">Tempo</span></button><button data-sp="600"><span class="sp-word">langsam</span><span class="sp-icon">🐢</span></button><button data-sp="350" class="on"><span class="sp-word">normal</span><span class="sp-icon">🚶</span></button><button data-sp="180"><span class="sp-word">schnell</span><span class="sp-icon">🐇</span></button></div>
       </div>
       <div class="track"><div class="ticks js-ticks" id="ticks"></div><div class="nowline js-nowline" id="nowline"></div>
+        <div class="tl-dot js-dot"></div>
         <input type="range" id="slider" class="js-slider" min="0" max="0" value="0" step="1" aria-label="Zeit wählen"></div>
     </div>
   </div>
@@ -380,7 +378,7 @@
         <span class="ls-lab">jetzt</span>
         <div class="ls-vwrap"><div class="ls-vtrack">
           <div class="track"><div class="ticks js-ticks"></div><div class="nowline js-nowline"></div>
-            <div class="ls-vdot js-vdot"></div>
+            <div class="tl-dot js-dot"></div>
             <input type="range" class="js-slider" min="0" max="0" value="0" step="1" aria-label="Zeit wählen"></div>
         </div></div>
         <span class="ls-lab">später</span>
@@ -1038,7 +1036,7 @@
       var tks=tk.querySelectorAll('.tick');
       for(var j=0;j<tks.length;j++) tks[j].classList.toggle('active', j===i);
     });
-    document.querySelectorAll('.js-vdot').forEach(function(d){         // Positions-Punkt (Querformat) auf die Mitte des aktuellen Strichs
+    document.querySelectorAll('.js-dot').forEach(function(d){          // Positions-Punkt (Hoch- UND Querformat) auf die Mitte des aktuellen Strichs
       d.style.left=((i+0.5)/frames.length*100)+'%';
     });
     if(frames[i+1])imgOf(i+1);if(frames[i-1])imgOf(i-1);  // Nachbarn vorladen
@@ -1075,6 +1073,24 @@
   var slider=document.getElementById('slider');
   function bindSlider(sl){sl.oninput=function(){pause();show(+this.value)};}
   document.querySelectorAll('.js-slider').forEach(bindSlider);
+  // Querformat: Zeitleiste per Tap/Drag verschiebbar. Der rotierte native Slider zieht auf Touch nicht
+  // zuverlaessig -> vertikale Touch-Position der Spalte direkt auf den Frame abbilden.
+  (function(){
+    var wrap=document.querySelector('.ls-vwrap'); if(!wrap) return;
+    var dragging=false;
+    function pick(clientY){
+      if(!frames.length) return;
+      var r=wrap.getBoundingClientRect();
+      var f=(clientY-r.top)/r.height;                    // 0 oben (jetzt) .. 1 unten (spaeter)
+      var i=Math.floor(f*frames.length);
+      i=Math.max(0,Math.min(frames.length-1,i));
+      pause(); show(i);
+    }
+    wrap.addEventListener('pointerdown',function(e){dragging=true;try{wrap.setPointerCapture(e.pointerId);}catch(_){}; pick(e.clientY); e.preventDefault();});
+    wrap.addEventListener('pointermove',function(e){ if(dragging) pick(e.clientY); });
+    wrap.addEventListener('pointerup',function(){dragging=false;});
+    wrap.addEventListener('pointercancel',function(){dragging=false;});
+  })();
   document.querySelectorAll('.speed button[data-sp]').forEach(function(btn){btn.onclick=function(){
     speed=+this.dataset.sp; var sp=this.dataset.sp;
     document.querySelectorAll('.speed button[data-sp]').forEach(function(x){x.classList.toggle('on',x.dataset.sp===sp)});
