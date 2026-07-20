@@ -472,10 +472,21 @@ def build(local_radar=None, local_fc=None, local_icon_dir=None):
     if not frames:
         raise SystemExit("Keine Bilder erzeugt (Radar und Prognose beide fehlgeschlagen).")
 
+    # Karten-PNGs auf Web Mercator umprojizieren (Leaflet/CARTO sind Mercator; 4326-Bilder wuerden
+    # sonst ~10 km nach Norden verschoben). MUSS nach der Vorschau laufen (die nutzt ein 4326-Radarbild).
+    _warped = set()
+    _mapfiles = [fr["file"] for fr in frames]
+    _mapfiles += list(hail_files.values()) if isinstance(hail_files, dict) else (hail_files or [])
+    for _fn in _mapfiles:
+        _p = os.path.join(OUT, _fn)
+        if _p not in _warped and os.path.exists(_p):
+            c.to_mercator_png(_p); _warped.add(_p)
+    print(f"Karten-PNGs auf Web Mercator umprojiziert: {len(_warped)}")
+
     frames.sort(key=lambda fr: fr["time"])
     manifest = {
         "source": "Radar & ICON-CH1: MeteoSchweiz · ICON-D2: DWD · AROME: Météo-France (Vorhersage = Mittelwert)",
-        "bounds": c.BOUNDS,
+        "bounds": c.BOUNDS_MERC,
         "now": now.isoformat() if now else None,
         "v": int(dt.datetime.now(dt.timezone.utc).timestamp()),   # Cache-Buster pro Build
         "hail": {"max": round(hail_max_all), "files": hail_files,

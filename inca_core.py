@@ -42,6 +42,38 @@ DST_TRANSFORM = Affine(DST_RES, 0, DST_W, 0, -DST_RES, DST_N)   # Pixel->Koordin
 DST_CRS = CRS.from_epsg(4326)
 BOUNDS = [[DST_S, DST_W], [DST_N, DST_E]]              # fuer Leaflet (imageOverlay)
 
+# ---- Karten-Ausgabe: Web Mercator (EPSG:3857) --------------------------------
+# Die Verarbeitung laeuft intern komplett in EPSG:4326 (Plattkarte). Leaflet/CARTO
+# sind aber Web Mercator -> ein 4326-Bild wuerde beim imageOverlay linear in die
+# Mercator-Box gestreckt und der Inhalt um ~10 km nach Norden verschoben. Darum werden
+# die FERTIGEN Karten-PNGs (Radar/Vorhersage/Hagel) am Schluss auf Mercator umprojiziert.
+_M_FWD = Transformer.from_crs(4326, 3857, always_xy=True)
+_M_INV = Transformer.from_crs(3857, 4326, always_xy=True)
+_mx_w, _my_s = _M_FWD.transform(DST_W, DST_S)
+_mx_e, _my_n = _M_FWD.transform(DST_E, DST_N)
+MERC_RES = 1200.0                                       # Mercator-Meter pro Pixel (~1 km real)
+MW = int(round((_mx_e - _mx_w) / MERC_RES))            # Breite des Mercator-Rasters (px)
+MH = int(round((_my_n - _my_s) / MERC_RES))            # Hoehe (durch Nord-Streckung > DH)
+_mx_e2 = _mx_w + MW * MERC_RES                          # nach Rundung tatsaechlich abgedeckt
+_my_s2 = _my_n - MH * MERC_RES
+MERC_TRANSFORM = Affine(MERC_RES, 0, _mx_w, 0, -MERC_RES, _my_n)   # Pixel(0,0)=NW, Zeile 0 = Nord
+MERC_CRS = CRS.from_epsg(3857)
+_bw, _bs = _M_INV.transform(_mx_w, _my_s2)              # SW-Ecke des Mercator-Rasters -> lat/lon
+_be, _bn = _M_INV.transform(_mx_e2, _my_n)             # NE-Ecke -> lat/lon
+BOUNDS_MERC = [[_bs, _bw], [_bn, _be]]                 # Leaflet-Ecken (latLng) des Mercator-Rasters
+
+def to_mercator_png(png_path):
+    """Ein fertiges 4326-Karten-PNG in-place auf Web Mercator umprojizieren (fuer die Leaflet-Karte).
+    Nearest, damit die eingefaerbten Radarfarben und die Transparenz exakt erhalten bleiben."""
+    src = np.asarray(Image.open(png_path).convert("RGBA"))          # (DH, DW, 4)
+    dst = np.zeros((MH, MW, 4), dtype="uint8")
+    for b in range(4):
+        reproject(source=np.ascontiguousarray(src[:, :, b]), destination=dst[:, :, b],
+                  src_transform=DST_TRANSFORM, src_crs=DST_CRS,
+                  dst_transform=MERC_TRANSFORM, dst_crs=MERC_CRS,
+                  resampling=Resampling.nearest)
+    Image.fromarray(dst, "RGBA").save(png_path, "PNG", optimize=True)
+
 # ---- Radar-Farbskala: mm/h -> RGBA --------------------------------------------
 # Diskrete Stufen wie beim klassischen Radar (hellblau = leicht ... magenta = Gewitter).
 # MUSS mit SCALE_JS in index.html uebereinstimmen (Punkt-Mengenanzeige).

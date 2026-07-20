@@ -1201,8 +1201,10 @@
     var w=im.naturalWidth,h=im.naturalHeight;
     if(_cv.width!==w){_cv.width=w;_cv.height=h;}
     try{_ctx.clearRect(0,0,w,h);_ctx.drawImage(im,0,0);
+      // Bilder sind jetzt Web Mercator: X linear im Laengengrad, Y ueber die Mercator-Projektion.
+      var mY=function(lat){return Math.log(Math.tan(Math.PI/4+lat*Math.PI/360));};
       var x=Math.min(w-1,Math.max(0,Math.round((ll.lng-bW)/(bE-bW)*w)));
-      var y=Math.min(h-1,Math.max(0,Math.round((bN-ll.lat)/(bN-bS)*h)));
+      var y=Math.min(h-1,Math.max(0,Math.round((mY(bN)-mY(ll.lat))/(mY(bN)-mY(bS))*h)));
       var d=_ctx.getImageData(x,y,1,1).data;
       if(d[3]<8)return null; // transparent = kein Niederschlag
       var best=0,bd=1e9;for(var k=0;k<SCALE_JS.length;k++){var c=SCALE_JS[k],
