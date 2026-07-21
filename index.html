@@ -661,21 +661,33 @@
   // Doppelklick: einen Schritt rein, ums Fadenkreuz
   map.on('dblclick',function(e){ L.DomEvent.stop(e); zoomAtCrosshair(1); });
 
-  // Pinch (2 Finger) ums Fadenkreuz statt um die Mitte. Leaflet ruft beim Pinch fortlaufend
-  // map._move(center, zoom, {pinch:true}) auf -> wir korrigieren das Zentrum so, dass der beim
-  // Pinch-Beginn unterm Fadenkreuz liegende Ort dort bleibt (kontinuierlich, nicht erst am Ende).
-  var _pinchKeep=null, _origMove=map._move;
-  map.getContainer().addEventListener('touchstart',function(e){
-    if(e.touches && e.touches.length===2) _pinchKeep=crosshairLatLng();   // Fokus = Fadenkreuz-Ort bei Pinch-Beginn
-  },{passive:true});
-  map._move=function(center,zoom,data,supressEvent){
-    if(data && data.pinch && _pinchKeep && zoom!=null){
-      var half=L.point(this.getSize().x/2,this.getSize().y/2);
-      var c=this.unproject(this.project(_pinchKeep,zoom).subtract(crosshairPt().subtract(half)),zoom);
-      if(c && isFinite(c.lat) && isFinite(c.lng)) center=c;                // Zentrum so, dass der Ort am Fadenkreuz bleibt
-    }
+  // Pinch (2 Finger) ums Fadenkreuz statt um die Mitte. Leaflet skaliert LIVE ueber map._move(...,{pinch:true})
+  // und macht beim LOSLASSEN eine Zoom-Endanimation ueber map._animateZoom(...) mit dem UNkorrigierten
+  // Zentrum (Fenstermitte) + auf ganze Zoomstufe gerundet -> ohne Eingriff springt der Punkt am Schluss um
+  // den Box-Versatz. Wir korrigieren BEIDES: das Zentrum so waehlen, dass der Fadenkreuz-Ort dort bleibt.
+  var _pinchKeep=null, _pinching=false, _pinchEnd=false;
+  var _origMove=map._move, _origAnim=map._animateZoom;
+  function _pinchCenter(zoom){                                   // Zentrum, das _pinchKeep an der Fadenkreuz-Pixelposition haelt
+    var half=L.point(map.getSize().x/2, map.getSize().y/2);
+    var c=map.unproject(map.project(_pinchKeep,zoom).subtract(crosshairPt().subtract(half)),zoom);
+    return (c && isFinite(c.lat) && isFinite(c.lng)) ? c : null;
+  }
+  // Capture-Phase: laeuft VOR Leaflets document-Handlern, damit _pinchEnd steht, bevor die Endanimation startet.
+  document.addEventListener('touchstart',function(e){
+    if(e.touches && e.touches.length===2){ _pinching=true; _pinchEnd=false; _pinchKeep=crosshairLatLng(); }
+  },true);
+  document.addEventListener('touchend',function(e){
+    if(_pinching && (!e.touches || e.touches.length<2)){ _pinching=false; _pinchEnd=true; setTimeout(function(){ _pinchEnd=false; },500); }
+  },true);
+  map._move=function(center,zoom,data,supressEvent){            // LIVE-Skalierung
+    if(data && data.pinch && _pinchKeep && zoom!=null){ var c=_pinchCenter(zoom); if(c) center=c; }
     return _origMove.call(this,center,zoom,data,supressEvent);
   };
+  map._animateZoom=function(center,zoom,startAnim,noUpdate){    // Zoom-Endanimation nach dem Loslassen
+    if((_pinching||_pinchEnd) && _pinchKeep && zoom!=null){ var c=_pinchCenter(zoom); if(c) center=c; }
+    return _origAnim.call(this,center,zoom,startAnim,noUpdate);
+  };
+  map.on('zoomend',function(){ _pinching=false; _pinchEnd=false; });
 
   // ---- Position in der URL (?c=zoom/lat/lng): teilbar & beim Aufruf direkt anspringen ----
   // Query statt Hash, damit auch der SERVER den Ausschnitt sieht (ausschnittsgenaues
