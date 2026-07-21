@@ -452,6 +452,9 @@
   updateLayoutClasses();
   var SWISS=[46.83,8.23], Z=8;                 // Standard-Zentrum/Zoom (Schweiz)
   var map=L.map('map',{center:SWISS,zoom:Z,minZoom:6,maxZoom:13,zoomControl:false,
+    trackResize:false,                                        // Auto-Resize aus: onViewportChange macht invalidateSize selbst
+                                                              // (sonst re-vermisst Leaflet beim Drehen VOR unserem Handler und
+                                                              //  ueberschreibt selLatLng via moveend -> Ort springt)
     scrollWheelZoom:false,doubleClickZoom:false,touchZoom:'center'}).setView(SWISS,Z);
   L.control.zoom({position:'bottomright'}).addTo(map);
   // Standort-Button als eigene Karten-Control DIREKT ueber den Zoom-Buttons (bottomright),
