@@ -630,7 +630,7 @@
   }
   // Zoom immer um das Fadenkreuz (Mitte des freien Bereichs). setZoomAround verschiebt in EINEM
   // Schritt so, dass der Punkt unterm Fadenkreuz fest bleibt - kein Nachrucken wie bei zoomend-Korrektur.
-  function crosshairPt(){ return L.point(map.getSize().x/2, map.getSize().y/2 - mapOffsetY()); }
+  function crosshairPt(){ return L.point(map.getSize().x/2 - mapOffsetX(), map.getSize().y/2 - mapOffsetY()); }
   // Ein Zoom-Fokus (lat/lng), der konstant bleibt, solange nur gezoomt wird. Erst beim manuellen
   // Verschieben (Drag) wird er neu gesetzt. So bezieht sich jeder Zoomschritt auf denselben
   // geografischen Punkt -> ueber beliebig viele Rein-/Raus-Zooms KEINE akkumulierte Drift.
@@ -645,6 +645,11 @@
     map.setView(map.unproject(ap.subtract(chOff), t), t, {animate:false});
   }
   map.on('dragstart',function(){ _zoomFocus=null; });   // manuelles Verschieben -> Fokus neu bestimmen
+  // +/- Buttons (Leaflet-Zoom-Control) rufen map.zoomIn/zoomOut auf -> Standard zoomt zur Fenstermitte.
+  // Auf zoomAtCrosshair umleiten, damit sie wie Doppelklick/Wheel ums Fadenkreuz zoomen (Ort bleibt stehen).
+  // Der Control behaelt so Styling + Deaktiviert-Zustand an den Zoom-Grenzen (via zoom-Events aus setView).
+  map.zoomIn  = function(delta){ zoomAtCrosshair(+(delta||1)); return map; };
+  map.zoomOut = function(delta){ zoomAtCrosshair(-(delta||1)); return map; };
   // Scrollrad: eigene, gebuendelte Behandlung (Leaflet-Wheel ist aus)
   var _wheelAcc=0,_wheelTimer=null;
   L.DomEvent.on(map.getContainer(),'wheel',function(e){
@@ -655,6 +660,22 @@
   });
   // Doppelklick: einen Schritt rein, ums Fadenkreuz
   map.on('dblclick',function(e){ L.DomEvent.stop(e); zoomAtCrosshair(1); });
+
+  // Pinch (2 Finger) ums Fadenkreuz statt um die Mitte. Leaflet ruft beim Pinch fortlaufend
+  // map._move(center, zoom, {pinch:true}) auf -> wir korrigieren das Zentrum so, dass der beim
+  // Pinch-Beginn unterm Fadenkreuz liegende Ort dort bleibt (kontinuierlich, nicht erst am Ende).
+  var _pinchKeep=null, _origMove=map._move;
+  map.getContainer().addEventListener('touchstart',function(e){
+    if(e.touches && e.touches.length===2) _pinchKeep=crosshairLatLng();   // Fokus = Fadenkreuz-Ort bei Pinch-Beginn
+  },{passive:true});
+  map._move=function(center,zoom,data,supressEvent){
+    if(data && data.pinch && _pinchKeep && zoom!=null){
+      var half=L.point(this.getSize().x/2,this.getSize().y/2);
+      var c=this.unproject(this.project(_pinchKeep,zoom).subtract(crosshairPt().subtract(half)),zoom);
+      if(c && isFinite(c.lat) && isFinite(c.lng)) center=c;                // Zentrum so, dass der Ort am Fadenkreuz bleibt
+    }
+    return _origMove.call(this,center,zoom,data,supressEvent);
+  };
 
   // ---- Position in der URL (?c=zoom/lat/lng): teilbar & beim Aufruf direkt anspringen ----
   // Query statt Hash, damit auch der SERVER den Ausschnitt sieht (ausschnittsgenaues
