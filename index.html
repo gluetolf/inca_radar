@@ -162,6 +162,7 @@
   body.landscape .panel{width:165px;max-width:none;height:100%;display:flex;flex-direction:column;
     padding:10px 12px 10px 24px;border-radius:16px;transition:width .28s ease}
   body.landscape .panel.collapsed{width:82px;padding-left:24px;padding-right:10px}
+  body.orienting .panel{transition:none}                    /* beim Drehen nicht animieren -> Offset sofort korrekt */
   body.landscape .panel > .collapsible,
   body.landscape .panel > .row{display:none}                /* Hochformat-Innenleben aus */
   .ls-body{display:none}                                    /* Querformat-Innenleben nur im landscape */
@@ -533,11 +534,19 @@
   // Bei Groessen-/Orientierungswechsel: Leaflet muss seine Groesse neu vermessen (sonst behaelt
   // die Karte nach dem Drehen die alte Hoehe), dann Fadenkreuz/Controls/Mitte neu setzen.
   function onViewportChange(){
+    var keep = selLatLng;                                     // Ort am Fadenkreuz VOR dem Umbau merken
+    var was = document.body.classList.contains('landscape');
     setAppHeight();                                            // Kartenhoehe frisch aus innerHeight
     updateLayoutClasses();                                     // phone/landscape bei Drehen aktualisieren
+    if(document.body.classList.contains('landscape') !== was){ // Orientierung gewechselt:
+      document.body.classList.add('orienting');               // Box-Breite OHNE Animation -> Offset stimmt sofort (kein Wobble)
+      void document.body.offsetWidth;                          // Reflow erzwingen, damit die Box auf Endbreite snappt
+    }
     if(map && map.invalidateSize) map.invalidateSize(false);   // Leaflet-Groesse neu berechnen
     placeCrosshair(); liftControls(); sizeVTracks();
-    if(typeof refreshCenter==='function') refreshCenter();
+    if(keep && map) setViewAtCrosshair(keep, map.getZoom(), {animate:false});  // bisherigen Ort am NEUEN Fadenkreuz halten -> kein Sprung
+    else if(typeof refreshCenter==='function') refreshCenter();
+    document.body.classList.remove('orienting');               // Transition wieder frei (Collapse/Expand animiert weiter)
   }
   window.addEventListener('resize', onViewportChange);
   window.addEventListener('orientationchange', function(){
