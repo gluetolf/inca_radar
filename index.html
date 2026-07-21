@@ -192,6 +192,10 @@
   .ls-vtrack{position:absolute;top:0;left:30px;width:var(--vtrack-len,200px);height:30px;
     transform:rotate(90deg);transform-origin:top left}
   .ls-vtrack .track{height:30px}
+  /* Durchgehende Achslinie im Track: im Vollbild liegen die vielen kleinen Striche darauf; im
+     Nicht-Vollbild (Striche zu klein zum Sehen) bleibt wenigstens diese Linie als Zeitachse sichtbar. */
+  .ls-vspine{position:absolute;top:50%;left:0;right:0;height:3px;transform:translateY(-50%);
+    background:#cfd6c6;border-radius:2px;pointer-events:none}
   .ls-vtrack .daylabel{transform:rotate(-90deg);transform-origin:left top;left:auto}
   .ls-vtrack input[type=range]{touch-action:none}
   /* Slider-Daumen im Querformat sichtbar (im Hochformat ist er unsichtbar/overlay) */
@@ -218,7 +222,7 @@
   /* Info-Knopf unten (ersetzt die 3-zeiligen Credits im Querformat) + fixes Overlay */
   .ls-info-row{flex:none;display:flex;justify-content:flex-start;align-items:center;gap:8px;margin-top:4px}
   .ls-info-btn{width:26px;height:26px;border-radius:50%;border:1px solid var(--panel-line);
-    background:transparent;color:var(--muted);font-size:14px;line-height:1;cursor:pointer;
+    background:transparent;color:var(--muted);font-size:15px;font-weight:700;font-style:italic;line-height:1;cursor:pointer;
     display:grid;place-items:center;padding:0}
   .ls-info-btn:active{transform:scale(.94)}
   /* Overlay haengt AUSSERHALB der ls-body (kein overflow-Clip); fixed unten rechts, ueber der Karte */
@@ -375,13 +379,11 @@
     </div>
     <div class="ls-cols">
       <div class="ls-col ls-col-track">
-        <span class="ls-lab">jetzt</span>
         <div class="ls-vwrap"><div class="ls-vtrack">
-          <div class="track"><div class="ticks js-ticks"></div><div class="nowline js-nowline"></div>
+          <div class="track"><div class="ls-vspine"></div><div class="ticks js-ticks"></div><div class="nowline js-nowline"></div>
             <div class="tl-dot js-dot"></div>
             <input type="range" class="js-slider" min="0" max="0" value="0" step="1" aria-label="Zeit wählen"></div>
         </div></div>
-        <span class="ls-lab">später</span>
       </div>
       <div class="ls-col ls-x">
         <span class="ls-lab">leicht</span>
@@ -395,7 +397,7 @@
       </div>
     </div>
     <div class="ls-info-row ls-x">
-      <button class="ls-info-btn js-lsinfo" type="button" aria-label="Info & Lizenzen">ⓘ</button>
+      <button class="ls-info-btn js-lsinfo" type="button" aria-label="Info & Lizenzen">i</button>
       <span class="ls-build">__BUILDNUM__</span>
     </div>
   </div>
@@ -1112,7 +1114,13 @@
         }
       }
     });
-    document.querySelectorAll('.js-nowline').forEach(function(n){n.style.left=((nowIdx+1)/frames.length*100)+'%';});
+    var _nowpct=(nowIdx+1)/frames.length*100;
+    document.querySelectorAll('.js-nowline').forEach(function(n){n.style.left=_nowpct+'%';});
+    // Spine wie das Strich-Band einfaerben: bis zur Jetzt-Linie "frueher" (past-Grau), danach Vorhersage (tan).
+    // Im gedrehten Track wird "to right" zu oben->unten -> oben frueher, unten spaeter.
+    document.querySelectorAll('.ls-vspine').forEach(function(s){
+      s.style.background='linear-gradient(to right,#aab59b 0%,#aab59b '+_nowpct+'%,#f0c98a '+_nowpct+'%,#f0c98a 100%)';
+    });
     document.querySelectorAll('.js-slider').forEach(function(s){s.max=frames.length-1;});
   }
   // Manifest anwenden: Overlays neu aufbauen, Zeitleiste setzen, Start waehlen
