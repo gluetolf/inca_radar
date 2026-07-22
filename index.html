@@ -39,11 +39,10 @@
     font-family:-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;}
   *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
   html,body{height:100%;margin:0}
-  /* Der body-Hintergrund wird von iOS auch AUSSERHALB des Webviews gemalt (schmaler Streifen unten in
-     der installierten PWA; im Browser tritt das nicht auf). Darum die helle Kachelfarbe von CARTO statt
-     des gruenlichen Grau -> der Streifen geht optisch in der Karte auf und faellt nicht als Rand auf.
-     Die Karte selbst behaelt ihren eigenen Hintergrund. */
-  body{overflow:hidden;background:#f7f8f6;color:var(--ink)}
+  /* Der body-Hintergrund wird von iOS auch AUSSERHALB des Webviews gemalt (schmaler Bereich unten in
+     der installierten PWA; im Browser tritt das nicht auf). Weiss wie die Box, denn die Box schliesst
+     dort buendig an -> der Bereich wirkt wie ihr unterer Rand. Karte behaelt eigenen Hintergrund. */
+  body{overflow:hidden;background:#fff;color:var(--ink)}
   /* Hoehe explizit ueber JS-Variable (--app-height aus window.innerHeight) statt 100% - auf iPad
      meldet 100%/absolute nach Drehen manchmal einen veralteten Viewport, der sogar den Reload
      ueberdauert. --app-height wird bei Last/Resize/Orientierung frisch gesetzt. */
@@ -154,6 +153,12 @@
   .licinner a{color:var(--green-dark);text-decoration:underline}
   .licnote{font-size:11px;color:var(--muted);margin-top:14px !important;border-top:1px solid var(--panel-line);padding-top:12px}
   .dock{position:absolute;left:0;right:0;bottom:0;z-index:500;padding:0 calc(14px + env(safe-area-inset-right)) calc(14px + env(safe-area-inset-bottom)) calc(14px + env(safe-area-inset-left));display:flex;justify-content:center;pointer-events:none}
+  /* Installierte PWA auf iOS: die Seite endet dort schon VOR dem Bildschirmrand, iOS haelt den
+     Systembereich also bereits frei. Zusaetzlich env(safe-area-inset-bottom) zu reservieren, wuerde
+     ihn doppelt zaehlen -> Box und Bedienelemente sassen zu hoch. Buendig abschliessen; der weisse
+     Bereich darunter (ausserhalb der Seite) wirkt dann wie der untere Rand der Box.
+     NUR iOS (navigator.standalone) - andere PWAs reichen bis an den Rand, dort waere das falsch. */
+  body.iospwa .dock{padding-bottom:0}
   .panel{pointer-events:auto;width:100%;max-width:780px;background:var(--panel);backdrop-filter:blur(10px);border:1px solid var(--panel-line);
     border-radius:18px;box-shadow:var(--shadow);padding:12px 16px 14px}
 
@@ -457,6 +462,8 @@
     var isPhone = shortSide<=560;
     document.body.classList.toggle('phone', isPhone);
     document.body.classList.toggle('landscape', isPhone && w>h);   // Querformat nur auf dem Handy
+    // Installierte iOS-App? Nur dort endet die Seite vor dem Bildschirmrand (siehe .dock-Regel).
+    document.body.classList.toggle('iospwa', window.navigator.standalone===true);
   }
   updateLayoutClasses();
   var SWISS=[46.83,8.23], Z=8;                 // Standard-Zentrum/Zoom (Schweiz)
