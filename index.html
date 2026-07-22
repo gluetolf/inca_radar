@@ -429,6 +429,11 @@
     // Beides sind frische Messwerte (nicht das alte, auf iPad veraltende CSS-100%).
     var vv=(window.visualViewport && window.visualViewport.height) ? window.visualViewport.height : 0;
     var h=Math.max(vv, window.innerHeight||0) || vv || window.innerHeight;
+    // Layout-Viewport (clientHeight) mitnehmen, wenn er nur WENIG groesser ist -> das ist der
+    // Safe-Area-Fall der installierten iOS-PWA (Karte unten zu kurz). Grosse Abweichungen bewusst
+    // ignorieren: die stammen vom auf iPad nach dem Drehen veraltenden Layout-Viewport.
+    var ch=document.documentElement.clientHeight||0;
+    if(ch>h && ch-h<=60) h=ch;
     document.documentElement.style.setProperty('--app-height', Math.round(h)+'px');
     if(map && map.invalidateSize) map.invalidateSize(false);
     if(typeof sizeVTracks==='function') requestAnimationFrame(sizeVTracks);   // Zeitleiste folgt der sichtbaren Hoehe
@@ -1463,6 +1468,33 @@
     });
   }
 
+})();
+
+/* ---- TEMPORAER: Diagnose-Einblendung fuer den grauen Rand auf dem iPad ----
+   Zeigt die echten Viewport-Werte. Wird nach der Diagnose wieder entfernt. */
+(function(){
+  var d=document.createElement('div');
+  d.style.cssText='position:fixed;left:8px;top:64px;z-index:9999;background:rgba(255,255,255,.93);'+
+    'border:1px solid #888;border-radius:8px;padding:6px 8px;color:#111;white-space:pre;'+
+    'font:11px/1.45 ui-monospace,Menlo,Consolas,monospace;pointer-events:none';
+  var probe=document.createElement('div');
+  probe.style.cssText='position:fixed;left:-9999px;width:1px;height:1px;'+
+    'padding-bottom:env(safe-area-inset-bottom);padding-top:env(safe-area-inset-top)';
+  document.body.appendChild(d); document.body.appendChild(probe);
+  function upd(){
+    var vv=window.visualViewport, m=document.getElementById('map'), p=document.querySelector('.panel');
+    var mr=m?m.getBoundingClientRect():null, pr=p?p.getBoundingClientRect():null, cs=getComputedStyle(probe);
+    d.textContent=
+      'innerH  '+window.innerHeight+'\n'+
+      'vv.h    '+(vv?Math.round(vv.height):'-')+'   vv.top '+(vv?Math.round(vv.offsetTop):'-')+'\n'+
+      'docEl.h '+document.documentElement.clientHeight+'   body.h '+document.body.clientHeight+'\n'+
+      'appH    '+getComputedStyle(document.documentElement).getPropertyValue('--app-height').trim()+'\n'+
+      'map.bot '+(mr?Math.round(mr.bottom):'-')+'   map.h '+(mr?Math.round(mr.height):'-')+'\n'+
+      'box.top '+(pr?Math.round(pr.top):'-')+'   box.bot '+(pr?Math.round(pr.bottom):'-')+'\n'+
+      'safe    top '+cs.paddingTop+'  bot '+cs.paddingBottom+'\n'+
+      'dpr '+window.devicePixelRatio+'   standalone '+(window.navigator.standalone===true);
+  }
+  upd(); setInterval(upd,500); window.addEventListener('resize',upd);
 })();
 </script>
 </body>
