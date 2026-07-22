@@ -1236,13 +1236,30 @@
   }
   function fail(msg){if(frames.length)return;document.getElementById('loadtext').innerHTML="⚠️ "+msg;}
   // Manifest laden (immer cache-frei: ?Zeitstempel + no-store)
+  var _lastLoad=0;
   function load(){
+    _lastLoad=Date.now();
     fetch('frames.json?'+Date.now(),{cache:'no-store'})
       .then(function(r){return r.ok?r.json():r.json().then(function(j){throw new Error(j.error||('HTTP '+r.status))});})
       .then(function(d){if(d.frames&&d.frames.length)apply(d);else fail('Keine Daten verfügbar.');})
       .catch(function(e){fail((e&&e.message)||'Daten konnten nicht geladen werden.');});
   }
   load(); setInterval(load,5*60*1000); setInterval(updateStamp,30*1000);
+  // Rueckkehr aus dem Hintergrund: iOS friert Timer in der installierten PWA ein, der 5-Minuten-Poll
+  // laeuft also nicht weiter -> beim Wiederanzeigen sofort neu laden (gedrosselt, damit kurzes
+  // Weg-/Zurueckschalten nicht jedes Mal einen Request ausloest). Sonst blieben die Daten stehen,
+  // bis man die App beendet und neu oeffnet.
+  function resumeRefresh(){
+    if(document.hidden) return;
+    if(Date.now()-_lastLoad < 60*1000) return;                 // vor <1 Min schon geladen -> reicht
+    load(); updateStamp();
+    if(navigator.serviceWorker && navigator.serviceWorker.getRegistration){  // zugleich auf neue App-Version pruefen
+      navigator.serviceWorker.getRegistration().then(function(reg){ if(reg) reg.update(); }).catch(function(){});
+    }
+  }
+  document.addEventListener('visibilitychange', resumeRefresh);
+  window.addEventListener('pageshow', resumeRefresh);
+  window.addEventListener('focus', resumeRefresh);
 
   document.addEventListener('keydown',function(e){
     var t=e.target;                                            // beim Tippen in Felder nicht eingreifen
@@ -1430,15 +1447,18 @@
   // ---- Service Worker: garantiert aktuelle Version (network-first) + Offline-Faehigkeit ----
   if('serviceWorker' in navigator){
     window.addEventListener('load', function(){
+      // Uebernahme durch einen NEUEN Service Worker (sw.js nutzt skipWaiting+claim) -> Seite einmal
+      // neu laden, damit die neue Version sofort greift. Ohne das blieb die alte Version stehen,
+      // bis man die App beendet und neu geoeffnet hat.
+      var hadController = !!navigator.serviceWorker.controller;   // beim ersten Install: kein Reload noetig
+      var reloading=false;
+      navigator.serviceWorker.addEventListener('controllerchange', function(){
+        if(!hadController || reloading) return;
+        reloading=true; location.reload();
+      });
       navigator.serviceWorker.register('sw.js').then(function(reg){
-        reg.addEventListener('updatefound', function(){        // neue SW-Version gefunden
-          var nw=reg.installing;
-          if(nw) nw.addEventListener('statechange', function(){
-            // sobald der neue SW bereit ist und schon ein alter aktiv war -> beim naechsten Laden greift er
-            if(nw.state==='activated' && navigator.serviceWorker.controller){ /* still: naechster Reload ist frisch */ }
-          });
-        });
-        setInterval(function(){ reg.update(); }, 60*60*1000);   // stuendlich auf Updates pruefen
+        reg.update();                                            // beim Start gleich auf neue Version pruefen
+        setInterval(function(){ reg.update(); }, 60*60*1000);     // stuendlich auf Updates pruefen
       }).catch(function(){});
     });
   }
