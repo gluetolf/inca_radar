@@ -1268,6 +1268,9 @@
   // bis man die App beendet und neu oeffnet.
   function resumeRefresh(){
     if(document.hidden) return;
+    onViewportChange();                                        // Hoehe/Groesse neu messen: iOS meldet die
+                                                               // volle Viewporthoehe manchmal erst spaeter
+                                                               // (sonst bleibt die Karte unten zu kurz)
     if(Date.now()-_lastLoad < 60*1000) return;                 // vor <1 Min schon geladen -> reicht
     load(); updateStamp();
     if(navigator.serviceWorker && navigator.serviceWorker.getRegistration){  // zugleich auf neue App-Version pruefen
