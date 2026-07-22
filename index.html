@@ -39,7 +39,10 @@
     font-family:-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;}
   *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
   html,body{height:100%;margin:0}
-  body{overflow:hidden;background:#dfe5d8;color:var(--ink)}
+  /* Der body-Hintergrund wird von iOS auch AUSSERHALB des Webviews gemalt (schmaler Streifen unten in
+     der installierten PWA). Darum die helle Kachelfarbe von CARTO statt des gruenlichen Grau -> der
+     Streifen faellt nicht mehr als "Rand" auf. Die Karte selbst behaelt ihren eigenen Hintergrund. */
+  body{overflow:hidden;background:#f7f8f6;color:var(--ink)}
   /* Hoehe explizit ueber JS-Variable (--app-height aus window.innerHeight) statt 100% - auf iPad
      meldet 100%/absolute nach Drehen manchmal einen veralteten Viewport, der sogar den Reload
      ueberdauert. --app-height wird bei Last/Resize/Orientierung frisch gesetzt. */
@@ -424,16 +427,12 @@
   // Kartenhoehe explizit aus der sichtbaren Viewporthoehe setzen (iPad-robust, s. CSS-Kommentar zu #map).
   // visualViewport ist auf iOS zuverlaessiger als innerHeight; Fallback auf innerHeight.
   function setAppHeight(){
-    // Groesseren der beiden LIVE-Werte nehmen: in der installierten iOS-PWA meldet visualViewport
-    // die Hoehe ohne den Home-Indicator-Bereich -> Karte war unten zu kurz (grauer Streifen).
-    // Beides sind frische Messwerte (nicht das alte, auf iPad veraltende CSS-100%).
+    // visualViewport ist auf iOS zuverlaessiger als innerHeight; beides sind Live-Werte.
+    // Hinweis: in der installierten iPad-PWA ist die ganze SEITE nur so hoch wie hier gemessen
+    // (Webview endet vor dem Bildschirmrand). Der schmale Streifen darunter liegt ausserhalb der
+    // Seite und laesst sich von hier aus nicht fuellen - nur farblich angleichen (body-Hintergrund).
     var vv=(window.visualViewport && window.visualViewport.height) ? window.visualViewport.height : 0;
     var h=Math.max(vv, window.innerHeight||0) || vv || window.innerHeight;
-    // Layout-Viewport (clientHeight) mitnehmen, wenn er nur WENIG groesser ist -> das ist der
-    // Safe-Area-Fall der installierten iOS-PWA (Karte unten zu kurz). Grosse Abweichungen bewusst
-    // ignorieren: die stammen vom auf iPad nach dem Drehen veraltenden Layout-Viewport.
-    var ch=document.documentElement.clientHeight||0;
-    if(ch>h && ch-h<=60) h=ch;
     document.documentElement.style.setProperty('--app-height', Math.round(h)+'px');
     if(map && map.invalidateSize) map.invalidateSize(false);
     if(typeof sizeVTracks==='function') requestAnimationFrame(sizeVTracks);   // Zeitleiste folgt der sichtbaren Hoehe
@@ -1470,32 +1469,6 @@
 
 })();
 
-/* ---- TEMPORAER: Diagnose-Einblendung fuer den grauen Rand auf dem iPad ----
-   Zeigt die echten Viewport-Werte. Wird nach der Diagnose wieder entfernt. */
-(function(){
-  var d=document.createElement('div');
-  d.style.cssText='position:fixed;left:8px;top:64px;z-index:9999;background:rgba(255,255,255,.93);'+
-    'border:1px solid #888;border-radius:8px;padding:6px 8px;color:#111;white-space:pre;'+
-    'font:11px/1.45 ui-monospace,Menlo,Consolas,monospace;pointer-events:none';
-  var probe=document.createElement('div');
-  probe.style.cssText='position:fixed;left:-9999px;width:1px;height:1px;'+
-    'padding-bottom:env(safe-area-inset-bottom);padding-top:env(safe-area-inset-top)';
-  document.body.appendChild(d); document.body.appendChild(probe);
-  function upd(){
-    var vv=window.visualViewport, m=document.getElementById('map'), p=document.querySelector('.panel');
-    var mr=m?m.getBoundingClientRect():null, pr=p?p.getBoundingClientRect():null, cs=getComputedStyle(probe);
-    d.textContent=
-      'innerH  '+window.innerHeight+'\n'+
-      'vv.h    '+(vv?Math.round(vv.height):'-')+'   vv.top '+(vv?Math.round(vv.offsetTop):'-')+'\n'+
-      'docEl.h '+document.documentElement.clientHeight+'   body.h '+document.body.clientHeight+'\n'+
-      'appH    '+getComputedStyle(document.documentElement).getPropertyValue('--app-height').trim()+'\n'+
-      'map.bot '+(mr?Math.round(mr.bottom):'-')+'   map.h '+(mr?Math.round(mr.height):'-')+'\n'+
-      'box.top '+(pr?Math.round(pr.top):'-')+'   box.bot '+(pr?Math.round(pr.bottom):'-')+'\n'+
-      'safe    top '+cs.paddingTop+'  bot '+cs.paddingBottom+'\n'+
-      'dpr '+window.devicePixelRatio+'   standalone '+(window.navigator.standalone===true);
-  }
-  upd(); setInterval(upd,500); window.addEventListener('resize',upd);
-})();
 </script>
 </body>
 </html>

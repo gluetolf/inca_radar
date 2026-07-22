@@ -4,7 +4,8 @@
    Nur wenn offline, wird auf den letzten gecachten Stand zurueckgegriffen (Offline-Bonus).
    Die Radar-Bilder/frames.json sind ohnehin zeitkritisch und tragen eigene Cache-Buster. */
 
-const CACHE = 'radar-v3';          // bei groesseren Aenderungen hochzaehlen -> alter Cache wird geloescht
+const CACHE = 'radar-__BUILDNUM__';   // Buildnummer wird beim Build eingesetzt -> sw.js aendert sich bei
+                                      // JEDEM Deploy -> neuer SW uebernimmt -> die App laedt sich selbst neu.
 
 // Bei Installation sofort aktiv werden (nicht auf Schliessen aller Tabs warten)
 self.addEventListener('install', function(e){ self.skipWaiting(); });

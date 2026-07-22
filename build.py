@@ -517,11 +517,22 @@ def build(local_radar=None, local_fc=None, local_icon_dir=None):
     _fp = os.path.join(c.HERE, "fplaces.js")                   # Auslandsorte mitkopieren
     if os.path.exists(_fp):
         shutil.copyfile(_fp, os.path.join(OUT, "fplaces.js")); _aux.append("fplaces.js")
-    for _sf in ("index.php", "ogimg.php", ".htaccess", "geo_bg.json", "logo.png", "sw.js",
+    for _sf in ("index.php", "ogimg.php", ".htaccess", "geo_bg.json", "logo.png",
                 "manifest.json", "icon-192.png", "icon-512.png", "icon-maskable.png", "apple-touch-icon.png"):   # Server-/Live-/PWA-Dateien
         _sp = os.path.join(c.HERE, _sf)
         if os.path.exists(_sp):
             shutil.copyfile(_sp, os.path.join(OUT, _sf)); _aux.append(_sf)
+    # sw.js NICHT nur kopieren, sondern die Buildnummer einsetzen: dadurch aendert sich die Datei bei
+    # jedem Deploy -> der Browser sieht einen neuen Service Worker -> die installierte PWA aktualisiert
+    # sich selbst. Ohne diesen Stempel blieb sw.js bei reinen index.html-Aenderungen byte-gleich und
+    # die App musste von Hand beendet und neu gestartet werden.
+    _swp = os.path.join(c.HERE, "sw.js")
+    if os.path.exists(_swp):
+        with open(_swp, "r", encoding="utf-8") as _f:
+            _sw = _f.read()
+        with open(os.path.join(OUT, "sw.js"), "w", encoding="utf-8") as _f:
+            _f.write(_sw.replace("__BUILDNUM__", _bnum))
+        _aux.append("sw.js")
     print("Mitkopiert ins site/:", ", ".join(_aux) if _aux else "(keine Zusatzdateien gefunden!)")
     shutil.rmtree(tmp, ignore_errors=True)
     print(f"OK: {len(frames)} Frames -> {OUT}/  (now={manifest['now']})")
