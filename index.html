@@ -153,6 +153,10 @@
   .licinner a{color:var(--green-dark);text-decoration:underline}
   .licnote{font-size:11px;color:var(--muted);margin-top:14px !important;border-top:1px solid var(--panel-line);padding-top:12px}
   .dock{position:absolute;left:0;right:0;bottom:0;z-index:500;padding:0 calc(14px + env(safe-area-inset-right)) calc(14px + env(safe-area-inset-bottom)) calc(14px + env(safe-area-inset-left));display:flex;justify-content:center;pointer-events:none}
+  /* Installierte PWA (iOS): der Webview endet schon VOR dem Bildschirmrand, den Systembereich haelt
+     iOS also bereits frei. Trotzdem zusaetzlich env(safe-area-inset-bottom) zu reservieren, wuerde den
+     Abstand doppelt zaehlen -> unter der Box klaffte zu viel Luft. Darum hier nur ein kleiner Abstand. */
+  body.pwa .dock{padding-bottom:8px}
   .panel{pointer-events:auto;width:100%;max-width:780px;background:var(--panel);backdrop-filter:blur(10px);border:1px solid var(--panel-line);
     border-radius:18px;box-shadow:var(--shadow);padding:12px 16px 14px}
 
@@ -456,6 +460,10 @@
     var isPhone = shortSide<=560;
     document.body.classList.toggle('phone', isPhone);
     document.body.classList.toggle('landscape', isPhone && w>h);   // Querformat nur auf dem Handy
+    // Installiert vom Homescreen? (iOS: navigator.standalone, sonst display-mode)
+    var pwa = (window.navigator.standalone===true) ||
+              (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches);
+    document.body.classList.toggle('pwa', !!pwa);
   }
   updateLayoutClasses();
   var SWISS=[46.83,8.23], Z=8;                 // Standard-Zentrum/Zoom (Schweiz)
