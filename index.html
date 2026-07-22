@@ -1249,11 +1249,23 @@
   function fail(msg){if(frames.length)return;document.getElementById('loadtext').innerHTML="⚠️ "+msg;}
   // Manifest laden (immer cache-frei: ?Zeitstempel + no-store)
   var _lastLoad=0;
+  var CODEVER='__CODEVER__';                                   // eigener Code-Stand (beim Build eingesetzt)
+  function checkCodeVersion(d){
+    // Neue Version deployt? Dann selbst neu laden - unabhaengig vom Service Worker, dessen
+    // Update-Pruefung auf iOS unzuverlaessig ist (App musste sonst von Hand beendet werden).
+    if(!d || !d.code || !CODEVER || CODEVER.charAt(0)==='_') return;   // ungebaute Datei -> nichts tun
+    if(d.code===CODEVER) return;
+    var seen=null;
+    try{ seen=sessionStorage.getItem('codeReload'); }catch(_){}        // Schleifenschutz:
+    if(seen===d.code) return;                                          // fuer diesen Stand schon versucht
+    try{ sessionStorage.setItem('codeReload', d.code); }catch(_){}
+    location.reload();
+  }
   function load(){
     _lastLoad=Date.now();
     fetch('frames.json?'+Date.now(),{cache:'no-store'})
       .then(function(r){return r.ok?r.json():r.json().then(function(j){throw new Error(j.error||('HTTP '+r.status))});})
-      .then(function(d){if(d.frames&&d.frames.length)apply(d);else fail('Keine Daten verfügbar.');})
+      .then(function(d){checkCodeVersion(d); if(d.frames&&d.frames.length)apply(d);else fail('Keine Daten verfügbar.');})
       .catch(function(e){fail((e&&e.message)||'Daten konnten nicht geladen werden.');});
   }
   load(); setInterval(load,5*60*1000); setInterval(updateStamp,30*1000);

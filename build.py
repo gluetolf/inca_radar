@@ -484,11 +484,24 @@ def build(local_radar=None, local_fc=None, local_icon_dir=None):
     print(f"Karten-PNGs auf Web Mercator umprojiziert: {len(_warped)}")
 
     frames.sort(key=lambda fr: fr["time"])
+    # Code-Version: Hash der QUELLdateien (nicht der Buildnummer!). Aendert sich nur, wenn wirklich
+    # Code deployt wurde - nicht bei jedem 5-Minuten-Datenlauf. Die laufende App vergleicht diesen
+    # Wert mit ihrem eigenen und laedt sich bei Abweichung selbst neu (unabhaengig vom Service Worker,
+    # dessen Update-Pruefung auf iOS unzuverlaessig ist).
+    import hashlib as _hl
+    _codeh = _hl.md5()
+    for _cf in ("index.html", "sw.js"):
+        _cp = os.path.join(c.HERE, _cf)
+        if os.path.exists(_cp):
+            with open(_cp, "rb") as _f:
+                _codeh.update(_f.read())
+    _codever = _codeh.hexdigest()[:8]
     manifest = {
         "source": "Radar & ICON-CH1: MeteoSchweiz · ICON-D2: DWD · AROME: Météo-France (Vorhersage = Mittelwert)",
         "bounds": c.BOUNDS_MERC,
         "now": now.isoformat() if now else None,
         "v": int(dt.datetime.now(dt.timezone.utc).timestamp()),   # Cache-Buster pro Build
+        "code": _codever,                                          # Code-Stand (siehe oben)
         "hail": {"max": round(hail_max_all), "files": hail_files,
                  "cells_by_t": hail_cells_by_t},   # Hagelzellen PRO Zeit: [lat_c,lon_c,POH%,lat_max,lon_max]; Hinweis folgt dem Frame
         "frames": frames,
@@ -504,7 +517,7 @@ def build(local_radar=None, local_fc=None, local_icon_dir=None):
     _bnum = _bnow.strftime("%y%m%d%H%M")
     with open(os.path.join(c.HERE, "index.html"), "r", encoding="utf-8") as _f:
         _html = _f.read()
-    _html = _html.replace("__BUILDNUM__", _bnum)
+    _html = _html.replace("__BUILDNUM__", _bnum).replace("__CODEVER__", _codever)
     with open(os.path.join(OUT, "index.html"), "w", encoding="utf-8") as _f:
         _f.write(_html)
     _aux = []
