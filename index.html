@@ -1449,7 +1449,11 @@
     var a=null;
     try{ a=JSON.parse(localStorage.getItem('discAck')||'null'); }catch(_){}
     var fresh = a && a.v===DISC_VER && a.t && (Date.now()-a.t) < DISC_DAYS*864e5;
-    if(!fresh) openDisc();
+    // Zum Testen: ?disc=1 an die Adresse haengen -> Hinweis erscheint trotz Bestaetigung.
+    // Mit ?disc=reset wird die gespeicherte Bestaetigung geloescht (danach wieder wie beim Erstaufruf).
+    var q=location.search;
+    if(/[?&]disc=reset/.test(q)){ try{ localStorage.removeItem('discAck'); }catch(_){} fresh=false; }
+    if(!fresh || /[?&]disc=1/.test(q)) openDisc();
   })();
   var _dok=document.getElementById('discOk'); if(_dok) _dok.onclick=ackDisc;
   document.addEventListener('click',function(e){                 // Dauerzeile "Keine amtliche Warnung"
