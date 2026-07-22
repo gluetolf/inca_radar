@@ -151,11 +151,12 @@
   .licinner a{color:var(--green-dark);text-decoration:underline}
   .licnote{font-size:11px;color:var(--muted);margin-top:14px !important;border-top:1px solid var(--panel-line);padding-top:12px}
   .dock{position:absolute;left:0;right:0;bottom:0;z-index:500;padding:0 calc(14px + env(safe-area-inset-right)) calc(14px + env(safe-area-inset-bottom)) calc(14px + env(safe-area-inset-left));display:flex;justify-content:center;pointer-events:none}
-  /* Installierte iOS-App: die Seite endet dort schon vor dem Bildschirmrand, den Systembereich haelt
-     iOS also bereits frei. Ihn per env(safe-area-inset-bottom) nochmals zu reservieren, zaehlt ihn
-     doppelt -> die Box sass ~20px zu hoch. Der normale Grundabstand von 14px bleibt, damit unter der
-     Box weiterhin ein Stueck Karte sichtbar ist (die Flaeche darunter faellt nur neben Karte nicht auf). */
-  body.iospwa .dock{padding-bottom:14px}
+  /* iPadOS gibt der installierten App beim Start im Hochformat nur einen verkuerzten Bereich und haelt
+     den Streifen fuer die Home-Anzeige AUSSERHALB der Seite frei; nach einer Drehung bekommt sie die
+     volle Hoehe, und die Home-Anzeige liegt dann UEBER der Seite. Nur im ersten Fall wuerde
+     env(safe-area-inset-bottom) den Abstand doppelt zaehlen -> Box sass zu hoch. Darum nur dort kuerzen
+     (Klasse wird gesetzt, solange die Seite kuerzer als der Bildschirm ist). */
+  body.shortpage .dock{padding-bottom:14px}
   .panel{pointer-events:auto;width:100%;max-width:780px;background:var(--panel);backdrop-filter:blur(10px);border:1px solid var(--panel-line);
     border-radius:18px;box-shadow:var(--shadow);padding:12px 16px 14px}
 
@@ -459,7 +460,12 @@
     var isPhone = shortSide<=560;
     document.body.classList.toggle('phone', isPhone);
     document.body.classList.toggle('landscape', isPhone && w>h);   // Querformat nur auf dem Handy
-    document.body.classList.toggle('iospwa', window.navigator.standalone===true);   // siehe .dock-Regel
+    // Seite kuerzer als der Bildschirm (bei voller Fensterbreite)? Dann haelt das System den Bereich
+    // unten bereits ausserhalb der Seite frei -> Sicherheitsabstand nicht nochmals reservieren.
+    var sc=window.screen||{};
+    var shortPage = (window.navigator.standalone===true) && sc.width && sc.height &&
+                    (w===sc.width) && (h < sc.height-4);
+    document.body.classList.toggle('shortpage', !!shortPage);
   }
   updateLayoutClasses();
   var SWISS=[46.83,8.23], Z=8;                 // Standard-Zentrum/Zoom (Schweiz)
