@@ -1273,7 +1273,7 @@
     placeCrosshair();                          // Fadenkreuz auf die Mitte des freien Bereichs
     liftControls();                            // Controls ggf. ueber die Box heben (schmale Tablets)
     selLatLng=crosshairLatLng();               // Chip zeigt von Anfang an den Punkt am Fadenkreuz
-    show(loopStart); if(!playing) play();
+    show(loopStart); if(!playing && !discBlocking()) play();   // nicht loslaufen, solange der Hinweis offen ist
   }
   // Frische-Anzeige: "Stand HH:MM · vor N Min" – beides bezieht sich auf DIESELBE Zeit
   // (das juengste Radarbild). Haengt die Quelle (>20 Min), wird das ehrlich benannt.
@@ -1438,10 +1438,12 @@
   // Bestaetigung aelter als DISC_DAYS ist - sonst sieht man ihn einmal und nie wieder.
   var DISC_VER='2026-07', DISC_DAYS=180;
   var DISCBOX=document.getElementById('discbox');
-  function openDisc(){ if(DISCBOX) DISCBOX.classList.add('open'); }
+  function discBlocking(){ return !!(DISCBOX && DISCBOX.classList.contains('open')); }
+  function openDisc(){ pause(); if(DISCBOX) DISCBOX.classList.add('open'); }   // Animation anhalten
   function ackDisc(){
     try{ localStorage.setItem('discAck', JSON.stringify({v:DISC_VER,t:Date.now()})); }catch(_){}
     if(DISCBOX) DISCBOX.classList.remove('open');
+    if(frames.length && !playing) play();                                      // erst jetzt loslaufen
   }
   (function(){
     var a=null;
