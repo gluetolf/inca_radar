@@ -465,6 +465,10 @@
    (?v=...) cache-frei nachgeladen. */
 (function(){
   "use strict";
+  // Adresse GLEICH ZU BEGINN merken: die App schreibt den Kartenausschnitt spaeter per
+  // history.replaceState in die Adresszeile (?c=...) und ueberschreibt dabei mitgegebene
+  // Parameter. Wer sie spaeter auswertet, findet sie nicht mehr.
+  var INITIAL_SEARCH = location.search || "";
   // ---- Karte + Hintergrund (hell/dunkel) ----
   // Kartenhoehe explizit aus der sichtbaren Viewporthoehe setzen (iPad-robust, s. CSS-Kommentar zu #map).
   // visualViewport ist auf iOS zuverlaessiger als innerHeight; Fallback auf innerHeight.
@@ -1451,7 +1455,7 @@
     var fresh = a && a.v===DISC_VER && a.t && (Date.now()-a.t) < DISC_DAYS*864e5;
     // Zum Testen: ?disc=1 an die Adresse haengen -> Hinweis erscheint trotz Bestaetigung.
     // Mit ?disc=reset wird die gespeicherte Bestaetigung geloescht (danach wieder wie beim Erstaufruf).
-    var q=location.search;
+    var q=INITIAL_SEARCH;
     if(/[?&]disc=reset/.test(q)){ try{ localStorage.removeItem('discAck'); }catch(_){} fresh=false; }
     if(!fresh || /[?&]disc=1/.test(q)) openDisc();
   })();
