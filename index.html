@@ -150,6 +150,21 @@
   .licinner p{margin:8px 0}
   .licinner a{color:var(--green-dark);text-decoration:underline}
   .licnote{font-size:11px;color:var(--muted);margin-top:14px !important;border-top:1px solid var(--panel-line);padding-top:12px}
+  /* Sicherheitshinweis (Startmeldung) */
+  .disc-list{margin:10px 0 0;padding-left:18px}
+  .disc-list li{margin:7px 0}
+  .disc-em{background:#fdf3f3;border-left:3px solid #c0392b;padding:9px 11px;border-radius:6px;margin:12px 0 0;font-weight:600}
+  .disc-small{font-size:11px;color:var(--muted);margin-top:14px;border-top:1px solid var(--panel-line);padding-top:11px}
+  .disc-actions{display:flex;justify-content:flex-end;margin-top:16px}
+  .disc-ok{background:var(--green);color:#fff;border:none;border-radius:10px;padding:11px 20px;
+    font-size:14px;font-weight:700;cursor:pointer}
+  .disc-ok:active{transform:scale(.97)}
+  .warnline{color:var(--muted);text-decoration:underline;cursor:pointer}
+  /* Kontexthinweis, sobald weit in die Prognose geschaut wird */
+  .fc-hint{font-size:11px;font-weight:700;color:#b06b13;background:rgba(243,162,58,.20);
+    border-radius:999px;padding:3px 10px;white-space:nowrap}
+  .fc-hint[hidden]{display:none}
+  body.landscape .fc-hint{margin:0 0 6px;align-self:center;font-size:10px;padding:2px 8px}
   .dock{position:absolute;left:0;right:0;bottom:0;z-index:500;padding:0 calc(14px + env(safe-area-inset-right)) calc(14px + env(safe-area-inset-bottom)) calc(14px + env(safe-area-inset-left));display:flex;justify-content:center;pointer-events:none}
   /* iPadOS gibt der installierten App beim Start im Hochformat nur einen verkuerzten Bereich und haelt
      den Streifen fuer die Home-Anzeige AUSSERHALB der Seite frei; nach einer Drehung bekommt sie die
@@ -348,6 +363,26 @@
     <p class="licnote">Die Datenquellen unterstützen diesen Dienst nicht und stehen in keiner Verbindung zu ihm.</p>
   </div>
 </div>
+<div class="licbox" id="discbox">
+  <div class="licinner">
+    <div class="lichead"><b>Bitte kurz lesen</b></div>
+    <p>Diese App zeigt Radar-Messwerte und eine automatisch berechnete Kurzfristprognose.
+       Sie ist <b>keine amtliche Warnung</b>.</p>
+    <ul class="disc-list">
+      <li>Das Radar erfasst <b>Niederschlag</b> &ndash; keine Blitze, keine Windb&ouml;en, keine Gewitterzugbahnen.</li>
+      <li>Die Prognose ist eine Modellrechnung. Ihre Verl&auml;sslichkeit nimmt mit zunehmender Vorlaufzeit rasch ab.</li>
+      <li>Im Gebirge k&ouml;nnen sich Gewitter innert Minuten neu bilden &ndash; auch dort, wo die Karte nichts zeigt.</li>
+      <li>Radarbilder sind einige Minuten alt und k&ouml;nnen l&uuml;ckenhaft sein (Abschattung durch Berge).</li>
+    </ul>
+    <p class="disc-em">Triff Entscheidungen am Berg oder auf dem Wasser nie allein aufgrund dieser App.</p>
+    <p>Amtliche Warnungen: <a href="https://www.meteoschweiz.admin.ch/gefahren.html" target="_blank" rel="noopener">MeteoSchweiz</a>.
+       Notfall <b>144</b>, Bergrettung <b>1414</b>.</p>
+    <p class="disc-small">Nutzung auf eigene Verantwortung. Es wird keine Gew&auml;hr f&uuml;r Richtigkeit,
+       Vollst&auml;ndigkeit oder Verf&uuml;gbarkeit &uuml;bernommen; eine Haftung f&uuml;r Sch&auml;den aus der
+       Nutzung ist &ndash; soweit gesetzlich zul&auml;ssig &ndash; ausgeschlossen.</p>
+    <div class="disc-actions"><button class="disc-ok" id="discOk" type="button">Verstanden</button></div>
+  </div>
+</div>
 <div class="dock"><div class="panel" id="panel">
   <button class="grip" id="grip" aria-label="Box auf-/zuklappen"></button>
   <div class="collapsible" id="collapsible">
@@ -360,6 +395,7 @@
     <button class="play js-play" id="play" aria-label="Abspielen">▶</button>
     <div class="timewrap">
       <div class="timehead"><span class="bigtime" id="bigtime">--:--</span>
+        <span class="fc-hint js-fchint" hidden>Prognose &ndash; Unsicherheit steigt</span>
         <div class="speed"><button class="speed-lbl" disabled><span class="sp-word">Tempo</span></button><button data-sp="600"><span class="sp-word">langsam</span><span class="sp-icon">🐢</span></button><button data-sp="350" class="on"><span class="sp-word">normal</span><span class="sp-icon">🚶</span></button><button data-sp="180"><span class="sp-word">schnell</span><span class="sp-icon">🐇</span></button></div>
       </div>
       <div class="track"><div class="ticks js-ticks" id="ticks"></div><div class="nowline js-nowline" id="nowline"></div>
@@ -374,7 +410,7 @@
       <div class="scalelabels"><span>0.3</span><span>1</span><span>5</span><span>20</span><span>50+</span></div>
       <div class="scale-slim-ends"><span>leicht</span><span>stark</span></div>
     </div>
-    <div class="dockcredit"><span class="credit-txt">© OpenStreetMap, © CARTO · </span><a href="#" id="licLink2" class="js-lic">Daten &amp; Lizenzen</a><span class="appver">__BUILDNUM__</span></div>
+    <div class="dockcredit"><a href="#" class="js-disc warnline">Keine amtliche Warnung</a><span class="credit-txt"> · © OpenStreetMap, © CARTO · </span><a href="#" id="licLink2" class="js-lic">Daten &amp; Lizenzen</a><span class="appver">__BUILDNUM__</span></div>
   </div>
   <div class="ls-body">
     <div class="ls-head ls-x">
@@ -385,6 +421,7 @@
       <button class="play js-play" aria-label="Abspielen">▶</button>
       <span class="ls-time"><span class="js-time-day">–</span><span class="js-time-hm">--:--</span></span>
     </div>
+    <div class="fc-hint js-fchint ls-x" hidden>Prognose &ndash; unsicher</div>
     <div class="ls-cols">
       <div class="ls-col ls-col-track">
         <div class="ls-vwrap"><div class="ls-vtrack">
@@ -412,6 +449,7 @@
 </div></div>
 <div class="ls-info-pop" id="lsInfoPop" hidden>
   <button class="ls-info-close js-lsinfo-close" type="button" aria-label="Schließen">×</button>
+  <div><a href="#" class="js-disc warnline">Keine amtliche Warnung</a></div>
   <div>© OpenStreetMap, © CARTO</div>
   <div><a href="#" class="js-lic">Daten &amp; Lizenzen</a></div>
 </div>
@@ -1103,6 +1141,10 @@
     document.querySelectorAll('.js-slider').forEach(function(sl){sl.value=i;});  // alle Slider synchron
     var _d=new Date(frames[i].time);
     setTimeLabels(dayLabel(_d), hm(_d));                  // Zeit in alle Anzeigen (Hoch einzeilig, Quer zweizeilig)
+    // Hinweis genau dann, wenn es riskant wird: weit in der Prognose. Ein Warntext beim Start wird
+    // gelesen, wenn nichts los ist - hier steht er im entscheidenden Moment.
+    var _far = frames[i].kind==='forecast' && nowMs && (_d.getTime()-nowMs) > 2*3600*1000;
+    document.querySelectorAll('.js-fchint').forEach(function(e){ e.hidden = !_far; });
     document.querySelectorAll('.js-ticks').forEach(function(tk){       // aktive Markierung JE Zeitleiste (Hoch- UND Querformat)
       var tks=tk.querySelectorAll('.tick');
       for(var j=0;j<tks.length;j++) tks[j].classList.toggle('active', j===i);
@@ -1391,6 +1433,28 @@
   }
 
   // Lizenz-/Datenquellen-Box
+  // ---- Sicherheitshinweis beim Start ----------------------------------------
+  // Einmal bestaetigen; erneut zeigen, wenn der Text geaendert wurde (DISC_VER) oder die
+  // Bestaetigung aelter als DISC_DAYS ist - sonst sieht man ihn einmal und nie wieder.
+  var DISC_VER='2026-07', DISC_DAYS=180;
+  var DISCBOX=document.getElementById('discbox');
+  function openDisc(){ if(DISCBOX) DISCBOX.classList.add('open'); }
+  function ackDisc(){
+    try{ localStorage.setItem('discAck', JSON.stringify({v:DISC_VER,t:Date.now()})); }catch(_){}
+    if(DISCBOX) DISCBOX.classList.remove('open');
+  }
+  (function(){
+    var a=null;
+    try{ a=JSON.parse(localStorage.getItem('discAck')||'null'); }catch(_){}
+    var fresh = a && a.v===DISC_VER && a.t && (Date.now()-a.t) < DISC_DAYS*864e5;
+    if(!fresh) openDisc();
+  })();
+  var _dok=document.getElementById('discOk'); if(_dok) _dok.onclick=ackDisc;
+  document.addEventListener('click',function(e){                 // Dauerzeile "Keine amtliche Warnung"
+    var t=e.target;
+    if(t && t.closest && t.closest('.js-disc')){ e.preventDefault(); openDisc(); }
+  });
+
   var LICBOX=document.getElementById('licbox');
   // Der Datenquellen-Link sitzt in der Leaflet-Attributionsleiste (dynamisch gerendert)
   // -> per Delegation abfangen. Spart einen eigenen Button in der Kopfzeile.
