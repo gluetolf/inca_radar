@@ -424,7 +424,11 @@
   // Kartenhoehe explizit aus der sichtbaren Viewporthoehe setzen (iPad-robust, s. CSS-Kommentar zu #map).
   // visualViewport ist auf iOS zuverlaessiger als innerHeight; Fallback auf innerHeight.
   function setAppHeight(){
-    var h=(window.visualViewport && window.visualViewport.height) ? window.visualViewport.height : window.innerHeight;
+    // Groesseren der beiden LIVE-Werte nehmen: in der installierten iOS-PWA meldet visualViewport
+    // die Hoehe ohne den Home-Indicator-Bereich -> Karte war unten zu kurz (grauer Streifen).
+    // Beides sind frische Messwerte (nicht das alte, auf iPad veraltende CSS-100%).
+    var vv=(window.visualViewport && window.visualViewport.height) ? window.visualViewport.height : 0;
+    var h=Math.max(vv, window.innerHeight||0) || vv || window.innerHeight;
     document.documentElement.style.setProperty('--app-height', Math.round(h)+'px');
     if(map && map.invalidateSize) map.invalidateSize(false);
     if(typeof sizeVTracks==='function') requestAnimationFrame(sizeVTracks);   // Zeitleiste folgt der sichtbaren Hoehe
@@ -528,7 +532,13 @@
     }
     var freeRight = window.innerWidth - pr.right;
     var overBox = freeRight < 54;
-    var lift = overBox ? Math.round(pr.height + 24) : 0;
+    // Lift aus der TATSAECHLICHEN Karten-Unterkante rechnen, nicht aus der Boxhoehe: .leaflet-bottom
+    // misst ab dem Kartencontainer, die Box sitzt aber am body. Solange beide gleich hoch enden, ist
+    // "Boxhoehe + Luft" zufaellig richtig - sobald sie das nicht sind (iOS-PWA), rutschen die Controls
+    // in die Box. mr.bottom - pr.top + Luft stimmt in jedem Fall.
+    var mapEl=document.getElementById('map');
+    var mb=mapEl?mapEl.getBoundingClientRect().bottom:window.innerHeight;
+    var lift = overBox ? Math.max(0, Math.round(mb - pr.top + 32)) : 0;   // 32px Luft ueber der Box
     document.documentElement.style.setProperty('--ctllift', lift+'px');
     // rechter Abstand: ueber der Box = gleicher Rand wie die Box (minus 10px Control-Eigenmargin);
     // sonst Leaflet-Standard.

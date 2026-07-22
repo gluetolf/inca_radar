@@ -4,7 +4,7 @@
    Nur wenn offline, wird auf den letzten gecachten Stand zurueckgegriffen (Offline-Bonus).
    Die Radar-Bilder/frames.json sind ohnehin zeitkritisch und tragen eigene Cache-Buster. */
 
-const CACHE = 'radar-v2';          // bei groesseren Aenderungen hochzaehlen -> alter Cache wird geloescht
+const CACHE = 'radar-v3';          // bei groesseren Aenderungen hochzaehlen -> alter Cache wird geloescht
 
 // Bei Installation sofort aktiv werden (nicht auf Schliessen aller Tabs warten)
 self.addEventListener('install', function(e){ self.skipWaiting(); });
@@ -24,9 +24,15 @@ self.addEventListener('fetch', function(e){
   const url = new URL(req.url);
   if(url.origin !== self.location.origin){ return; }         // fremde Hosts (Kartenkacheln, CDN) nicht anfassen
 
+  // Navigations (die HTML-Huelle) IMMER frisch vom Server holen und den HTTP-Cache umgehen (cache:'reload').
+  // Sonst kann iOS-Safari den network-first-fetch aus seinem eigenen HTTP-Cache bedienen -> App bleibt alt.
+  // Uebrige Assets: normales network-first (mit Cache-Fallback offline).
+  var doFetch = (req.mode === 'navigate')
+    ? fetch(url.href, {cache:'reload', credentials:'same-origin'})
+    : fetch(req);
   // Network-first: erst Netz versuchen, bei Erfolg Cache aktualisieren; bei Fehler aus Cache liefern.
   e.respondWith(
-    fetch(req).then(function(res){
+    doFetch.then(function(res){
       if(res && res.status===200 && res.type==='basic'){
         const copy = res.clone();
         caches.open(CACHE).then(function(c){ c.put(req, copy); });

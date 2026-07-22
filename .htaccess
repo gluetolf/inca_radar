@@ -9,4 +9,8 @@ DirectoryIndex index.php index.html
     Header set Pragma "no-cache"
     Header set Expires "0"
   </FilesMatch>
+  # HTML-Huelle immer revalidieren - sonst legt iOS-Safari sie in den HTTP-Cache und die App bleibt alt.
+  <FilesMatch "^(index\.php|index\.html)$">
+    Header set Cache-Control "no-cache, must-revalidate"
+  </FilesMatch>
 </IfModule>
