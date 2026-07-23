@@ -175,6 +175,9 @@ def _clean():
 
 
 def build(local_radar=None, local_fc=None, local_icon_dir=None):
+    _t_start = dt.datetime.now()
+    def _lap(label):                       # zeigt im Log, welche Phase wie viel Zeit kostet
+        print(f"[Zeit] {label}: {(dt.datetime.now()-_t_start).total_seconds():.0f}s seit Start")
     _clean()
     frames, now = [], None
     last_radar = None
@@ -283,6 +286,7 @@ def build(local_radar=None, local_fc=None, local_icon_dir=None):
             print("Radar: 0 Bilder")
     except Exception as e:
         print("Radar-Teil fehlgeschlagen:", e)
+    _lap("Radar fertig")
 
     # ---- Zukunft: Mittelwert aus ICON-CH1 + ICON-D2 + AROME, sonst die vorhandenen ----
     future_done = False
@@ -469,23 +473,28 @@ def build(local_radar=None, local_fc=None, local_icon_dir=None):
         except Exception as e:
             print("Prognose-Teil fehlgeschlagen:", e)
 
+    _lap("Vorhersage fertig")
+
     if not frames:
         raise SystemExit("Keine Bilder erzeugt (Radar und Prognose beide fehlgeschlagen).")
 
     # Karten-PNGs auf Web Mercator umprojizieren (Leaflet/CARTO sind Mercator; 4326-Bilder wuerden
     # sonst ~10 km nach Norden verschoben). MUSS nach der Vorschau laufen (die nutzt ein 4326-Radarbild).
-    _warped = set()
     _mapfiles = [fr["file"] for fr in frames]
     _mapfiles += list(hail_files.values()) if isinstance(hail_files, dict) else (hail_files or [])
-    _total = len(set(_mapfiles))
-    print(f"Projiziere {_total} Karten-PNGs auf Web Mercator ...")
-    for _fn in _mapfiles:
-        _p = os.path.join(OUT, _fn)
-        if _p not in _warped and os.path.exists(_p):
-            c.to_mercator_png(_p); _warped.add(_p)
-            if len(_warped) % 20 == 0:
-                print(f"  ... {len(_warped)}/{_total}")
-    print(f"Karten-PNGs auf Web Mercator umprojiziert: {len(_warped)}")
+    _todo = sorted({os.path.join(OUT, f) for f in _mapfiles if os.path.exists(os.path.join(OUT, f))})
+    print(f"Projiziere {len(_todo)} Karten-PNGs auf Web Mercator ...")
+    _tw = dt.datetime.now()
+    # Parallel: reproject und die PNG-Kodierung laufen in C und geben die GIL frei, mehrere
+    # Bilder gleichzeitig nutzen die Kerne des Runners aus.
+    _done = 0
+    with cf.ThreadPoolExecutor(max_workers=4) as ex:
+        for _ in ex.map(c.to_mercator_png, _todo):
+            _done += 1
+            if _done % 25 == 0:
+                print(f"  ... {_done}/{len(_todo)}")
+    print(f"Karten-PNGs auf Web Mercator umprojiziert: {_done} "
+          f"in {(dt.datetime.now()-_tw).total_seconds():.0f}s")
 
     frames.sort(key=lambda fr: fr["time"])
     # Code-Version: Hash der QUELLdateien (nicht der Buildnummer!). Aendert sich nur, wenn wirklich
@@ -552,6 +561,7 @@ def build(local_radar=None, local_fc=None, local_icon_dir=None):
         _aux.append("sw.js")
     print("Mitkopiert ins site/:", ", ".join(_aux) if _aux else "(keine Zusatzdateien gefunden!)")
     shutil.rmtree(tmp, ignore_errors=True)
+    _lap("Build gesamt")
     print(f"OK: {len(frames)} Frames -> {OUT}/  (now={manifest['now']})")
 
 
