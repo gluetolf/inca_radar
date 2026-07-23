@@ -637,7 +637,11 @@
     // in die Box. mr.bottom - pr.top + Luft stimmt in jedem Fall.
     var mapEl=document.getElementById('map');
     var mb=mapEl?mapEl.getBoundingClientRect().bottom:window.innerHeight;
-    var lift = overBox ? Math.max(0, Math.round(mb - pr.top + 32)) : 0;   // 32px Luft ueber der Box
+    // Leaflet gibt den Controls selbst 10px Abstand nach unten -> beim Ausrichten mitrechnen.
+    var CTLM=10;
+    var lift = overBox
+      ? Math.max(0, Math.round(mb - pr.top + 32))           // ueber der Box (Hochformat): unveraendert
+      : Math.max(0, Math.round(mb - pr.bottom - CTLM));     // neben der Box: buendig mit deren Unterkante
     document.documentElement.style.setProperty('--ctllift', lift+'px');
     // rechter Abstand: ueber der Box = gleicher Rand wie die Box (minus 10px Control-Eigenmargin);
     // sonst Leaflet-Standard.
