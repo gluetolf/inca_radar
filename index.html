@@ -202,8 +202,11 @@
   /* Handy: nicht im Textfluss mitlaufen (das schob die Zeitanzeige aus dem Bild), sondern frei
      ueber dem oberen Rand der Box schweben - schmal genug, um nichts zu verdecken. */
   @media (max-width:560px){
-    body:not(.landscape) .fc-hint{position:absolute;top:-11px;left:50%;transform:translateX(-50%);
-      z-index:3;box-shadow:0 1px 6px rgba(0,0,0,.18);background:#fbe6c8;font-size:10px;padding:2px 9px}
+    /* Vollstaendig UEBER der Box (bottom:100% = Unterkante an der Box-Oberkante), nicht halb
+       darueberliegend - sonst klebt der Hinweis auf dem Rand des ausklappbaren Bereichs. */
+    body:not(.landscape) .fc-hint{position:absolute;top:auto;bottom:calc(100% + 6px);
+      left:50%;transform:translateX(-50%);
+      z-index:3;box-shadow:0 1px 6px rgba(0,0,0,.18);background:#fbe6c8;font-size:10px;padding:3px 10px}
   }
   .fc-hint[hidden]{display:none}
   /* Querformat: nicht im Textfluss (nahm eine ganze Zeile weg), sondern links neben der Box
