@@ -157,9 +157,9 @@
   .disc-small{font-size:11px;color:var(--muted);margin-top:14px;border-top:1px solid var(--panel-line);padding-top:11px}
   /* Sicherheitshinweis: Titel und Knopf bleiben stehen, nur der Text scrollt. Sonst muss man
      erraten, dass unter dem Rand noch ein Knopf wartet (auf dem Handy sonst nicht sichtbar). */
-  #discbox .licinner{display:flex;flex-direction:column;max-height:min(86vh,var(--app-height,86vh));
+  .licbox .licinner{display:flex;flex-direction:column;max-height:min(86vh,var(--app-height,86vh));
     padding:16px 18px;overflow:hidden}
-  #discbox .lichead{flex:none}
+  .licbox .lichead{flex:none}
   /* Der Textbereich scrollt, Kopf und Knopf bleiben stehen. max-height zusaetzlich zur Flexbox:
      so ist der Bereich auch dann begrenzt (und scrollbar), wenn das Schrumpfen im Flex-Layout
      nicht greift. overflow-y:scroll statt auto -> der Balken ist am Desktop IMMER sichtbar,
@@ -175,7 +175,7 @@
   .disc-actions{flex:none;display:flex;justify-content:flex-end;margin-top:12px;
     border-top:1px solid var(--panel-line);padding-top:12px}
   @media (max-width:560px){
-    #discbox .licinner{font-size:12.5px;line-height:1.45;padding:14px 16px}
+    .licbox .licinner{font-size:12.5px;line-height:1.45;padding:14px 16px}
     .disc-list{padding-left:16px} .disc-list li{margin:5px 0}
     .disc-em{padding:8px 10px;margin-top:10px}
     .disc-small{margin-top:10px;padding-top:9px}
@@ -386,11 +386,14 @@
 <div class="licbox" id="licbox">
   <div class="licinner">
     <div class="lichead"><b>Datenquellen &amp; Lizenzen</b><button id="licClose" aria-label="Schließen">✕</button></div>
+    <div class="disc-scroll">
     <p>Radar &amp; Kurzfrist­modell ICON-CH1: <a href="https://www.meteoschweiz.admin.ch" target="_blank" rel="noopener">Quelle: MeteoSchweiz</a> — <a href="https://opendatadocs.meteoswiss.ch/de/general/terms-of-use" target="_blank" rel="noopener">CC BY 4.0</a>.</p>
     <p>Modell ICON-D2: <a href="https://www.dwd.de/DE/leistungen/opendata/opendata.html" target="_blank" rel="noopener">Quelle: Deutscher Wetterdienst (DWD)</a> — <a href="https://www.dwd.de/DE/service/rechtliche_hinweise/rechtliche_hinweise_node.html" target="_blank" rel="noopener">GeoNutzV / CC BY 4.0</a>.</p>
     <p>Modell AROME: <a href="https://donneespubliques.meteofrance.fr" target="_blank" rel="noopener">Quelle: Météo-France</a> — <a href="https://www.etalab.gouv.fr/licence-ouverte-open-licence" target="_blank" rel="noopener">Licence Ouverte (Etalab)</a>.</p>
     <p>Kartendaten: Grenzen, Seen &amp; Flüsse aus <a href="https://www.naturalearthdata.com" target="_blank" rel="noopener">Natural Earth</a> (Public Domain); Orte aus <a href="https://www.geonames.org" target="_blank" rel="noopener">GeoNames</a> (CC BY 4.0).</p>
     <p class="licnote">Die Datenquellen unterstützen diesen Dienst nicht und stehen in keiner Verbindung zu ihm.</p>
+    </div>
+    <div class="disc-actions"><button class="disc-ok" id="licOk" type="button">Ok</button></div>
   </div>
 </div>
 <div class="licbox" id="discbox">
@@ -1505,6 +1508,7 @@
     if(t && (t.id==='licLink' || t.id==='licLink2' || (t.classList&&t.classList.contains('js-lic')))){ e.preventDefault(); LICBOX.classList.add('open'); }
   });
   document.getElementById('licClose').onclick=function(){LICBOX.classList.remove('open');};
+  var _lok=document.getElementById('licOk'); if(_lok) _lok.onclick=function(){LICBOX.classList.remove('open');};
   LICBOX.onclick=function(e){ if(e.target===LICBOX) LICBOX.classList.remove('open'); };
 
   // Querformat: kleiner "i"-Knopf oeffnet/schliesst das Credits-/Lizenz-Overlay (.ls-info-pop).
