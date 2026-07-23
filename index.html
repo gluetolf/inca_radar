@@ -113,6 +113,9 @@
   /* Credits-/Lizenzzeile in der Box - auf ALLEN Geraeten */
   .dockcredit{display:flex;align-items:center;justify-content:flex-start;gap:5px;margin-top:9px;
     font-size:10px;color:var(--muted)}
+  /* Installierte iOS-App: die Fusszeile enthaelt Links und sitzt jetzt nahe am Bildschirmrand.
+     Etwas Luft darunter, damit sie nicht im Wischbereich der Home-Anzeige liegt. */
+  body.iospwa .dockcredit{padding-bottom:10px}
   /* Alle Teile auf identische feste Hoehe, Text per line-height mittig -> browserunabhaengig
      (auch Firefox, das <a>/Text/span sonst unterschiedlich vertikal ausrichtet) auf einer Linie. */
   .dockcredit .credit-txt,.dockcredit a,.dockcredit .appver{height:14px;line-height:14px;display:inline-block}
@@ -201,12 +204,11 @@
      volle Hoehe, und die Home-Anzeige liegt dann UEBER der Seite. Nur im ersten Fall wuerde
      env(safe-area-inset-bottom) den Abstand doppelt zaehlen -> Box sass zu hoch. Darum nur dort kuerzen
      (Klasse wird gesetzt, solange die Seite kuerzer als der Bildschirm ist). */
-  /* Installierte iOS-App bei voller Hoehe: Grundabstand und Sicherheitsbereich der Home-Anzeige
-     nicht addieren (das ergab 14+34=48px), sondern den groesseren der beiden nehmen -> 34px.
-     Etwas Abstand bleibt noetig, weil unten in der Box Links sitzen und die Wischgeste der
-     Home-Anzeige sonst dazwischenfunkt. */
-  body.iospwa .dock{padding-bottom:max(14px,env(safe-area-inset-bottom))}
-  body.shortpage .dock{padding-bottom:14px}
+  /* Installierte iOS-App: NUR den Grundabstand verwenden - so sitzt die Box gleich tief wie am
+     Desktop und am Handy. Der Sicherheitsbereich der Home-Anzeige wird bewusst nicht zusaetzlich
+     reserviert (das ergab vorher 14+34=48px). Damit die Links in der untersten Zeile nicht mit der
+     Wischgeste kollidieren, hat die Fusszeile der Box etwas mehr Luft nach unten (siehe .dockcredit). */
+  body.iospwa .dock{padding-bottom:14px}
   .panel{position:relative;pointer-events:auto;width:100%;max-width:780px;background:var(--panel);backdrop-filter:blur(10px);border:1px solid var(--panel-line);
     border-radius:18px;box-shadow:var(--shadow);padding:12px 16px 14px}
 
