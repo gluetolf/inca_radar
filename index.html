@@ -75,7 +75,8 @@
   .dockhead button:active{transform:scale(.94)}
   .dockhead .lupe.on{background:var(--green);color:#fff;border-color:var(--green)}
   /* Standort-Control (Leaflet-Bar) ueber den Zoom-Buttons - auf allen Geraeten */
-  .loc-ctl a{font-size:18px;line-height:30px;color:var(--ink)}
+  .loc-ctl a{display:flex;align-items:center;justify-content:center;color:var(--ink)}
+  .loc-ctl a svg{display:block}
   /* ---- Etappe 2: einklappbare Box (nur Handy). Desktop bleibt immer offen. ---- */
   .scale-slim-ends{display:none}                              /* schlanke Legenden-Enden nur Handy */
   /* Grip + Einklappen auf ALLEN Geraeten (Handy startet eingeklappt, Desktop/iPad ausgeklappt) */
@@ -565,7 +566,11 @@
   var LocCtl=L.Control.extend({options:{position:'bottomright'},
     onAdd:function(){
       var c=L.DomUtil.create('div','leaflet-bar loc-ctl');
-      var a=L.DomUtil.create('a','',c); a.href='#'; a.title='Auf meinen Standort zentrieren'; a.id='homeBtn'; a.innerHTML='⌖';
+      var a=L.DomUtil.create('a','',c); a.href='#'; a.title='Auf meinen Standort zentrieren'; a.id='homeBtn';
+      a.innerHTML='<svg viewBox="0 0 24 24" width="19" height="19" aria-hidden="true" focusable="false">'
+        +'<circle cx="12" cy="12" r="5.4" fill="none" stroke="currentColor" stroke-width="1.7"/>'
+        +'<path d="M12 1.8v4.6M12 17.6v4.6M1.8 12h4.6M17.6 12h4.6" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>'
+        +'</svg>';
       L.DomEvent.disableClickPropagation(c);
       return c;
     }});
