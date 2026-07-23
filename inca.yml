@@ -1,0 +1,78 @@
+# =============================================================================
+# inca.yml  –  GitHub-Actions-Workflow fuer das Niederschlagsradar
+#
+# Ablauf: cron-job.org stoesst diesen Workflow ueber die GitHub-API an
+# (workflow_dispatch). GitHub baut mit build.py den Ordner ./site/ und laedt ihn
+# per SFTP auf METAhost. Ablageort im Repo: .github/workflows/inca.yml
+# =============================================================================
+
+name: INCA Radar aktualisieren
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: inca-build
+  cancel-in-progress: false           # laufender Build wird nicht abgebrochen (keine Upload-Kollision)
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+
+      - name: Code holen
+        uses: actions/checkout@v4
+
+      - name: Python einrichten
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Abhaengigkeiten installieren
+        run: pip install -r requirements.txt
+
+      - name: Radardaten holen und Karten bauen
+        env:
+          METEOFRANCE_TOKEN: ${{ secrets.METEOFRANCE_TOKEN }}
+        run: python -u build.py     # -u = ungepuffert, damit der Fortschritt live im Log erscheint
+
+      # ./site/ per SFTP (SSH, Port 22) hochladen - meist stabiler als das wackelige FTPS.
+      #  * lftp + sshpass fuer Passwort-Login ueber SSH
+      #  * eine Verbindung, sequentiell; laedt nur GEAENDERTE Dateien (mirror --ignore-time)
+      #  * bei Abbruch reconnectet lftp hartnaeckig; zusaetzlich aeussere Wiederhol-Schleife (6x)
+      #  * frames.json wird immer frisch nachgeschoben (gleiche Groesse, neuer Inhalt pro Build)
+      - name: Per SFTP auf METAhost laden
+        env:
+          FTP_SERVER:     ${{ secrets.FTP_SERVER }}
+          FTP_USERNAME:   ${{ secrets.FTP_USERNAME }}
+          FTP_PASSWORD:   ${{ secrets.FTP_PASSWORD }}
+          FTP_SERVER_DIR: ${{ secrets.FTP_SERVER_DIR }}
+          SFTP_PORT:      ${{ secrets.SFTP_PORT }}     # optional; leer -> 2121 (METANET-Standard)
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq lftp sshpass >/dev/null
+          export SSHPASS="$FTP_PASSWORD"
+          PORT="${SFTP_PORT:-2121}"          # METANET/Plesk: SFTP laeuft auf Port 2121
+          SSH="sshpass -e ssh -a -x -oBatchMode=no -oStrictHostKeyChecking=no -oUserKnownHostsFile=/dev/null -oConnectTimeout=20"
+          CMDS="set cmd:fail-exit true; \
+                set sftp:auto-confirm yes; \
+                set sftp:connect-program \"$SSH\"; \
+                set net:timeout 20; set net:max-retries 8; set net:persist-retries 8; \
+                set net:reconnect-interval-base 5; set net:reconnect-interval-multiplier 1; \
+                set mirror:parallel-transfer-count 1; \
+                open -u \"$FTP_USERNAME\",\"$FTP_PASSWORD\" -p $PORT sftp://$FTP_SERVER; \
+                cd \"$FTP_SERVER_DIR\"; \
+                echo '--- Uebertrage geaenderte Dateien:'; \
+                mirror -R -v --ignore-time --delete ./site/ .; \
+                put ./site/frames.json; \
+                echo '--- Upload abgeschlossen.'; \
+                bye"
+          n=1
+          until lftp -e "$CMDS"; do
+            if [ "$n" -ge 6 ]; then
+              echo "::error::SFTP nach $n Versuchen fehlgeschlagen"; exit 1
+            fi
+            echo "SFTP-Versuch $n unvollstaendig - warte 20 s und mache weiter (bereits Uebertragenes wird uebersprungen)..."
+            sleep 20; n=$((n+1))
+          done
+          echo "SFTP-Upload vollstaendig (Versuch $n)"

@@ -477,10 +477,14 @@ def build(local_radar=None, local_fc=None, local_icon_dir=None):
     _warped = set()
     _mapfiles = [fr["file"] for fr in frames]
     _mapfiles += list(hail_files.values()) if isinstance(hail_files, dict) else (hail_files or [])
+    _total = len(set(_mapfiles))
+    print(f"Projiziere {_total} Karten-PNGs auf Web Mercator ...")
     for _fn in _mapfiles:
         _p = os.path.join(OUT, _fn)
         if _p not in _warped and os.path.exists(_p):
             c.to_mercator_png(_p); _warped.add(_p)
+            if len(_warped) % 20 == 0:
+                print(f"  ... {len(_warped)}/{_total}")
     print(f"Karten-PNGs auf Web Mercator umprojiziert: {len(_warped)}")
 
     frames.sort(key=lambda fr: fr["time"])
