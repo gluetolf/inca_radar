@@ -155,7 +155,25 @@
   .disc-list li{margin:7px 0}
   .disc-em{background:#fdf3f3;border-left:3px solid #c0392b;padding:9px 11px;border-radius:6px;margin:12px 0 0;font-weight:600}
   .disc-small{font-size:11px;color:var(--muted);margin-top:14px;border-top:1px solid var(--panel-line);padding-top:11px}
-  .disc-actions{display:flex;justify-content:flex-end;margin-top:16px}
+  /* Sicherheitshinweis: Titel und Knopf bleiben stehen, nur der Text scrollt. Sonst muss man
+     erraten, dass unter dem Rand noch ein Knopf wartet (auf dem Handy sonst nicht sichtbar). */
+  #discbox .licinner{display:flex;flex-direction:column;max-height:min(86vh,var(--app-height,86vh));
+    padding:16px 18px;overflow:hidden}
+  #discbox .lichead{flex:none}
+  .disc-scroll{flex:1 1 auto;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch;
+    padding-right:4px;overscroll-behavior:contain;
+    /* unten ausblenden = sichtbarer Hinweis, dass noch Text folgt */
+    -webkit-mask-image:linear-gradient(to bottom,#000 calc(100% - 22px),transparent 100%);
+            mask-image:linear-gradient(to bottom,#000 calc(100% - 22px),transparent 100%)}
+  .disc-scroll>p:first-child{margin-top:0}
+  .disc-actions{flex:none;display:flex;justify-content:flex-end;margin-top:12px;
+    border-top:1px solid var(--panel-line);padding-top:12px}
+  @media (max-width:560px){
+    #discbox .licinner{font-size:12.5px;line-height:1.45;padding:14px 16px}
+    .disc-list{padding-left:16px} .disc-list li{margin:5px 0}
+    .disc-em{padding:8px 10px;margin-top:10px}
+    .disc-small{margin-top:10px;padding-top:9px}
+  }
   .disc-ok{background:var(--green);color:#fff;border:none;border-radius:10px;padding:11px 20px;
     font-size:14px;font-weight:700;cursor:pointer}
   .disc-ok:active{transform:scale(.97)}
@@ -163,6 +181,12 @@
   /* Kontexthinweis, sobald weit in die Prognose geschaut wird */
   .fc-hint{font-size:11px;font-weight:700;color:#b06b13;background:rgba(243,162,58,.20);
     border-radius:999px;padding:3px 10px;white-space:nowrap}
+  /* Handy: nicht im Textfluss mitlaufen (das schob die Zeitanzeige aus dem Bild), sondern frei
+     ueber dem oberen Rand der Box schweben - schmal genug, um nichts zu verdecken. */
+  @media (max-width:560px){
+    body:not(.landscape) .fc-hint{position:absolute;top:-11px;left:50%;transform:translateX(-50%);
+      z-index:3;box-shadow:0 1px 6px rgba(0,0,0,.18);background:#fbe6c8;font-size:10px;padding:2px 9px}
+  }
   .fc-hint[hidden]{display:none}
   body.landscape .fc-hint{margin:0 0 6px;align-self:center;font-size:10px;padding:2px 8px}
   .dock{position:absolute;left:0;right:0;bottom:0;z-index:500;padding:0 calc(14px + env(safe-area-inset-right)) calc(14px + env(safe-area-inset-bottom)) calc(14px + env(safe-area-inset-left));display:flex;justify-content:center;pointer-events:none}
@@ -172,7 +196,7 @@
      env(safe-area-inset-bottom) den Abstand doppelt zaehlen -> Box sass zu hoch. Darum nur dort kuerzen
      (Klasse wird gesetzt, solange die Seite kuerzer als der Bildschirm ist). */
   body.shortpage .dock{padding-bottom:14px}
-  .panel{pointer-events:auto;width:100%;max-width:780px;background:var(--panel);backdrop-filter:blur(10px);border:1px solid var(--panel-line);
+  .panel{position:relative;pointer-events:auto;width:100%;max-width:780px;background:var(--panel);backdrop-filter:blur(10px);border:1px solid var(--panel-line);
     border-radius:18px;box-shadow:var(--shadow);padding:12px 16px 14px}
 
   /* ===== Querformat (nur Handy, body.landscape): Box als schmale rechte Spalte ===== */
@@ -366,6 +390,7 @@
 <div class="licbox" id="discbox">
   <div class="licinner">
     <div class="lichead"><b>Bitte kurz lesen</b></div>
+    <div class="disc-scroll">
     <p>Diese App zeigt Radar-Messwerte und eine automatisch berechnete Kurzfristprognose.
        Sie ist <b>keine amtliche Warnung</b>.</p>
     <ul class="disc-list">
@@ -380,6 +405,7 @@
     <p class="disc-small">Nutzung auf eigene Verantwortung. Es wird keine Gew&auml;hr f&uuml;r Richtigkeit,
        Vollst&auml;ndigkeit oder Verf&uuml;gbarkeit &uuml;bernommen; eine Haftung f&uuml;r Sch&auml;den aus der
        Nutzung ist &ndash; soweit gesetzlich zul&auml;ssig &ndash; ausgeschlossen.</p>
+    </div>
     <div class="disc-actions"><button class="disc-ok" id="discOk" type="button">Verstanden</button></div>
   </div>
 </div>
