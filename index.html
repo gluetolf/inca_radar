@@ -208,9 +208,11 @@
   .fc-hint[hidden]{display:none}
   /* Querformat: nicht im Textfluss (nahm eine ganze Zeile weg), sondern links neben der Box
      auf der Karte - dort ist Platz, und die Spalten behalten ihre volle Hoehe. */
-  /* Querformat: unten links NEBEN den Zoom-Knoepfen. Die sitzen per --ctlright 8px links der Box
-     und sind rund 32px breit -> der Hinweis endet 48px links der Box, also knapp daneben. */
-  body.landscape .fc-hint{position:absolute;right:calc(100% + 48px);bottom:12px;top:auto;
+  /* Querformat: unten links NEBEN den Zoom-Knoepfen. Am Screenshot ausgemessen: deren linke Kante
+     liegt rund 50px links der Box (8px --ctlright + 10px Leaflet-Eigenabstand + 34px Knopfbreite
+     inkl. Rahmen). Der Hinweis endet darum 64px links der Box -> rund 14px Luft dazwischen.
+     bottom:0 = buendig mit der Box-Unterkante, die Zoom-Knoepfe enden auf derselben Linie. */
+  body.landscape .fc-hint{position:absolute;right:calc(100% + 64px);bottom:0;top:auto;
     transform:none;margin:0;
     font-size:10px;padding:2px 9px;background:#fbe6c8;box-shadow:0 1px 6px rgba(0,0,0,.18)}
   .dock{position:absolute;left:0;right:0;bottom:0;z-index:500;padding:0 calc(14px + env(safe-area-inset-right)) calc(14px + env(safe-area-inset-bottom)) calc(14px + env(safe-area-inset-left));display:flex;justify-content:center;pointer-events:none}
